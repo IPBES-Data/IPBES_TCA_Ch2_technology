@@ -1,0 +1,206 @@
+---
+title: 'Report Assessment Ch2 Technology Visions'
+subtitle: 'Data Management Report'
+author:
+  - name: Rainer M Krug
+    id: rmk
+    orcid: 0000-0002-7490-0066
+    email: Rainer.Krug@Senckenberg.de, Rainer@Krugs.de
+    affiliation: 
+      - name: Senckenberg
+        city: Frankfurt (Main)
+        url: https://www.senckenberg.de/en/institutes/sbik-f/
+    roles: [author, editor]
+abstract: > 
+  A short description what this is about.
+  This is not a tracditional abstract, but rather something else ...
+# keywords:
+#   - aaaaa
+#   - bbbbb
+license: "CC BY"
+copyright: 
+  holder: No idea
+  year: 2023
+citation: 
+  type: report
+  container-title: IPBES Data Management Report
+  doi: XXXXXX
+doi: XXXXXX
+version: 0.0.1
+
+format:
+    html:
+        toc: true
+        toc-depth: 4
+        toc_expand: true
+        embed-resources: true
+        code-fold: true
+        code-summary: 'Show the code'
+        grid:
+            sidebar-width: 0px
+            body-width: 4000px
+            margin-width: 200px
+            gutter-width: 1.5rem      
+---
+
+```{r}
+#| label: setup
+#| include: false
+
+if (!exists("params")) {
+    params <- rmarkdown::yaml_front_matter("Report.qmd")$params
+}
+
+
+build <- as.integer(readLines("buildNo"))
+build <- build + 1
+writeLines(as.character(build), "buildNo")
+
+knitr::opts_chunk$set(message = NA)
+
+library(openalexR)
+library(dplyr)
+library(IPBES.R)
+
+compact <- function(x) {
+    x |>
+        gsub(pattern = "\n", replacement = " ") |>
+        gsub(pattern = "\\*", replacement = "") |>
+        gsub(pattern = "\\s+", replacement = " ") |>
+        gsub(pattern = "\\( ", replacement = "(") |>
+        gsub(pattern = " )", replacement = ")")
+}
+
+
+
+vision_st <- readLines(file.path("input", "vision.txt")) |>
+    paste(collapse = " ")
+
+technology_st <- readLines(file.path("input", "technology.txt")) |>
+    paste(collapse = " ")
+
+```
+
+## Working Title
+IPBES_TCA_Ch2_technology
+
+## Code repo
+
+[Github - private](https://github.com/IPBES-Data/IPBES_TCA_Ch2_technology)
+
+## Build No: `r build`
+
+%The BuidNo is automatically increased by one each time the report is rendered. It is used to indicate different renderings when the version stays the same%.
+
+## Introduction
+
+### The following steps will be done in documented in this report:
+
+- [ ] Do asearch with `vision_st`, `technology_st`, and `vision_st AND technology_st` and determine the  number of hits
+- [ ] Identify sub-fields (in topics) of hits
+- [ ] Check filtering using sub-fields
+- [ ] Should the complete `**R1** AND **R2**` be downloaded, or only a random subsets?
+
+
+## Step 1: Determination of numbers
+
+The search terms are based on the [shared google doc](https://docs.google.com/document/d/1_FmxYVhpv2Bu2Gbbxb7cWc49f3soFvc64Qau_x2RAqI){target=_blank}. They are cleaned up for the usage in [OpenAlex](https://openalex.org/){target=_blank}.
+
+## Vision
+
+The search terms is [R1](input/vision.txt){target=_blank}
+
+```{r}
+#| label: get get_vision_count
+#|
+
+vision_count <- openalexR::oa_fetch(
+    title_and_abstract.search = compact(vision_st),
+    count_only = TRUE,
+    verbose = TRUE
+)[, "count"]
+```
+
+
+## Technology
+
+The search terms is [technology](input/technology.txt){target=_blank}
+
+```{r}
+#| label: get get_R2_count
+#|
+
+technology_count <- openalexR::oa_fetch(
+    title_and_abstract.search = compact(technology_st),
+    count_only = TRUE,
+    verbose = TRUE
+)[, "count"]
+```
+
+## R1 AND R2
+
+The search term is [R1](input/R1.txt){target=_blank} AND [R2](input/R2.txt){target=_blank}
+
+### Count
+```{r}
+#| label: get get_R2_R2_count
+#|
+
+vision_technology_count <-
+    openalexR::oa_fetch(
+        title_and_abstract.search = compact(paste0("(", vision_st, ") AND (", technology_st, ")")),
+        count_only = TRUE,
+        verbose = TRUE
+    )[, "count"]
+```
+
+### Count Subfields
+```{r}
+#| label: get get_R2_R2_count_subfield
+#|
+
+vision_technology_subfields <- openalexR::oa_query(
+    title_and_abstract.search = compact(paste0("(", vision_st, ") AND (", technology_st, ")")),
+    group_by = "primary_topic.subfield.id",
+    verbose = TRUE
+) |>
+    openalexR::oa_request() |>
+    dplyr::bind_rows() |>
+    dplyr::arrange(key)
+
+## clean up missing or wrong vision_technology_subfields$key_display_name
+need_cleaning <- is.na(vision_technology_subfields$key_display_name) |
+    !is.na(as.numeric(vision_technology_subfields$key_display_name))
+
+fine <- !need_cleaning
+
+vision_technology_subfields <- vision_technology_subfields |>
+    dplyr::filter(fine) |>
+    dplyr::select(key, key_display_name) |>
+    dplyr::distinct() |>
+    merge(y = vision_technology_subfields[need_cleaning, -2], by = "key") |>
+    dplyr::bind_rows(vision_technology_subfields[fine, ]) |>
+    dplyr::group_by(key, key_display_name) |>
+    dplyr::summarize(count = sum(count))
+```
+
+## Results
+
+### Number of hits
+- **R1:**: `r formatC(vision_count, format="f", big.mark=",", digits=0)` hits
+- **R2:** `r formatC(technology_count, format="f", big.mark=",", digits=0)` hits
+- **R1 AND R2:** `r formatC(vision_technology_count, format="f", big.mark=",", digits=0)` hits
+
+
+### Subfields
+
+The subfields are based on the main topic assigned to each work. There are other topics also assigned, but this one has been identified as the main topic by an algorythm. `count` is the number of works in the `vision AND technology` corpus which have been assigned to the subfield.
+
+**Please take a look at these subfields of the topics to identify the ones to be filtered out.**
+
+The easies would be to download the Excel file through the button and to mark the subfields to be filtered out.
+```{r}
+IPBES.R::table_dt(vision_technology_subfields, fixedColumns = NULL, fn = "Vision Technology Subfields")
+```
+
+
