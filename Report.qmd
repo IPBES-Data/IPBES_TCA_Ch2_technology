@@ -101,7 +101,7 @@ IPBES_TCA_Ch2_technology
 - [ ] Do asearch with `vision_st`, `technology_st`, and `vision_st AND technology_st` and determine the  number of hits
 - [ ] Identify sub-fields (in topics) of hits
 - [ ] Check filtering using sub-fields
-- [ ] Should the complete `**R1** AND **R2**` be downloaded, or only a random subsets?
+- [ ] Should the complete `vision_st AND technology_st` be downloaded, or only a random subsets? Suggestiopn: 10 sets of 100 random works?
 
 
 ## Step 1: Determination of numbers
@@ -110,7 +110,7 @@ The search terms are based on the [shared google doc](https://docs.google.com/do
 
 ## Vision
 
-The search terms is [R1](input/vision.txt){target=_blank}
+The search terms is [vision](input/vision.txt){target=_blank}
 
 ```{r}
 #| label: get get_vision_count
@@ -129,7 +129,7 @@ vision_count <- openalexR::oa_fetch(
 The search terms is [technology](input/technology.txt){target=_blank}
 
 ```{r}
-#| label: get get_R2_count
+#| label: get get_technology_count
 #|
 
 technology_count <- openalexR::oa_fetch(
@@ -139,13 +139,13 @@ technology_count <- openalexR::oa_fetch(
 )[, "count"]
 ```
 
-## R1 AND R2
+## Vision AND technology
 
-The search term is [R1](input/R1.txt){target=_blank} AND [R2](input/R2.txt){target=_blank}
+The search term is [vision](input/vision.txt){target=_blank} AND [technology](input/technology.txt){target=_blank}
 
 ### Count
 ```{r}
-#| label: get get_R2_R2_count
+#| label: get_vision_count
 #|
 
 vision_technology_count <-
@@ -158,7 +158,7 @@ vision_technology_count <-
 
 ### Count Subfields
 ```{r}
-#| label: get get_R2_R2_count_subfield
+#| label: get_vision_AND_technology_count_subfield
 #|
 
 vision_technology_subfields <- openalexR::oa_query(
@@ -189,9 +189,9 @@ vision_technology_subfields <- vision_technology_subfields |>
 ## Results
 
 ### Number of hits
-- **R1:**: `r formatC(vision_count, format="f", big.mark=",", digits=0)` hits
-- **R2:** `r formatC(technology_count, format="f", big.mark=",", digits=0)` hits
-- **R1 AND R2:** `r formatC(vision_technology_count, format="f", big.mark=",", digits=0)` hits
+- **vision:**: `r formatC(vision_count, format="f", big.mark=",", digits=0)` hits
+- **technology:** `r formatC(technology_count, format="f", big.mark=",", digits=0)` hits
+- **vision AND technology:** `r formatC(vision_technology_count, format="f", big.mark=",", digits=0)` hits
 
 
 ### Subfields
