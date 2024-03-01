@@ -2,8 +2,10 @@
 title: 'Report Assessment Ch2 Technology Visions'
 subtitle: 'Data Management Report'
 author:
-  - name: Rainer M Krug
-    id: rmk
+  - name: 
+        family: Krug
+        given: Rainer M.    
+        id: rmk
     orcid: 0000-0002-7490-0066
     email: Rainer.Krug@Senckenberg.de, Rainer@Krugs.de
     affiliation: 
@@ -20,7 +22,7 @@ abstract: >
 license: "CC BY"
 copyright: 
   holder: No idea
-  year: 2023
+  year: 2024
 citation: 
   type: report
   container-title: IPBES Data Management Report
