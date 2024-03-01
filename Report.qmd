@@ -96,6 +96,9 @@ IPBES_TCA_Ch2_technology
 
 ## Introduction
 
+All searches are done on all works in OpenAlex. The search in the TCA Corpus is not possibly at the moment, but we are working on it.
+
+
 ### The following steps will be done in documented in this report:
 
 - [ ] Do asearch with `vision_st`, `technology_st`, and `vision_st AND technology_st` and determine the  number of hits
