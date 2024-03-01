@@ -26,9 +26,9 @@ Once finalised, the final repo will be published on Zenodo
 
 - **email to**:
   - CLA Sebastian Villasante <s.villasante.arg@gmail.com> <sebastian.villasante@usc.es>
-  - CLA Chuan Liao <cl824@cornell.edu>, 
+  - CLA Chuan Liao <cl824@cornell.edu>,
   - CLA Lynne Shannon <lynne.shannon@uct.ac.za>,  
-  - Qingxu Huang <qxhuang@bnu.edu.cn>, 
+  - Qingxu Huang <qxhuang@bnu.edu.cn>,
   - TSU Data <Rainer.Krug@Senckenberg.de>
 
 - **email cc**:
@@ -48,10 +48,12 @@ Once finalised, the final repo will be published on Zenodo
 
 ## Status
 
+- [ ] Return numbers of hits for refinement
 - [ ] Additional search terns on top of TCA Corpus will be provided through Sebastian
-- [ ] Return numbers of hits for refinement if needed
+- [ ] Filter using subfields of the topics
+- [ ] Return numbers of hits for refinement
 - [ ] extract 10 sets of random 100 papers for each final Corpus for manual review
 
 ## Reports
 
-- [search]()
+- [Report](Report.html)
