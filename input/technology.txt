@@ -13,7 +13,7 @@ IOT OR
 5G OR
 Cybersecurity OR
 Cryptocurrency OR
-"Biotechnolog" OR
+"Biotechnology" OR
 Nanotechnology OR
 Robotics OR
 "Sustainable Technology" OR

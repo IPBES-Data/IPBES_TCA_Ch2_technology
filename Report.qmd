@@ -61,17 +61,10 @@ writeLines(as.character(build), "buildNo")
 knitr::opts_chunk$set(message = NA)
 
 library(openalexR)
+library(arrow)
 library(dplyr)
 library(IPBES.R)
 
-compact <- function(x) {
-    x |>
-        gsub(pattern = "\n", replacement = " ") |>
-        gsub(pattern = "\\*", replacement = "") |>
-        gsub(pattern = "\\s+", replacement = " ") |>
-        gsub(pattern = "\\( ", replacement = "(") |>
-        gsub(pattern = " )", replacement = ")")
-}
 
 
 
@@ -80,6 +73,8 @@ vision_st <- readLines(file.path("input", "vision.txt")) |>
 
 technology_st <- readLines(file.path("input", "technology.txt")) |>
     paste(collapse = " ")
+
+source(file.path("R", "functions.R"))
 
 ```
 
@@ -116,14 +111,15 @@ The search terms are based on the [shared google doc](https://docs.google.com/do
 The search terms is [vision](input/vision.txt){target=_blank}
 
 ```{r}
-#| label: get get_vision_count
+#| label: get_vision_count
 #|
 
 vision_count <- openalexR::oa_fetch(
-    title_and_abstract.search = compact(vision_st),
+    title_and_abstract.search = vision_st,
     count_only = TRUE,
+    output = "list",
     verbose = TRUE
-)[, "count"]
+)$count
 ```
 
 
@@ -132,14 +128,15 @@ vision_count <- openalexR::oa_fetch(
 The search terms is [technology](input/technology.txt){target=_blank}
 
 ```{r}
-#| label: get get_technology_count
+#| label: get_technology_count
 #|
 
 technology_count <- openalexR::oa_fetch(
     title_and_abstract.search = compact(technology_st),
     count_only = TRUE,
+    output = "list",
     verbose = TRUE
-)[, "count"]
+)$count
 ```
 
 ## Vision AND technology
@@ -148,15 +145,16 @@ The search term is [vision](input/vision.txt){target=_blank} AND [technology](in
 
 ### Count
 ```{r}
-#| label: get_vision_count
+#| label: get_vision_technology_count
 #|
 
 vision_technology_count <-
     openalexR::oa_fetch(
         title_and_abstract.search = compact(paste0("(", vision_st, ") AND (", technology_st, ")")),
+        output = "list",
         count_only = TRUE,
         verbose = TRUE
-    )[, "count"]
+    )$count
 ```
 
 ### Count Subfields
@@ -189,13 +187,236 @@ vision_technology_subfields <- vision_technology_subfields |>
     dplyr::summarize(count = sum(count))
 ```
 
+
+
+
+
+
+# Download `technology AND vision` Corpus
+
+The corpus download will be stored in `data/pages` and the arrow database in `data/corpus`.
+
+This is not on github!
+
+The corpus can be read by running `get_corpus()` which o[pens the database so that then it can be fed into a `dplyr` pipeline. After most `dplyr` functions, the actual data needs to be collected via `collect()`.
+
+Only then is the actual data read!
+
+Needs to be enabled by setting `eval: true` in the code block below.
+
+```{r}
+#| label: get_tca_corpus
+#| eval: false
+#|
+
+tic()
+pages_dir <- file.path(".", "data", "pages")
+
+if (!dir.exists(fn)) {
+    dir.create(
+        path = pages_dir,
+        showWarnings = FALSE,
+        recursive = TRUE
+    )
+
+    years <- oa_fetch(
+        title_and_abstract.search = compact(paste0("(", vision_st, ") AND (", technology_st, ")")),
+        group_by = "publication_year",
+        paging = "cursor",
+        verbose = FALSE
+    )$key
+
+    #######
+    #######
+    processed <- list.dirs(
+        path = pages_dir,
+        full.names = FALSE,
+        recursive = FALSE
+    ) |>
+        gsub(
+            pattern = paste0("^pages_publication_year=", ""),
+            replacement = ""
+        )
+
+    interrupted <- list.files(
+        path = pages_dir,
+        pattern = "^next_page.rds",
+        full.names = TRUE,
+        recursive = TRUE
+    ) |>
+        gsub(
+            pattern = paste0("^", pages_dir, "/pages_publication_year=", ""),
+            replacement = ""
+        ) |>
+        gsub(
+            pattern = "/next_page.rds$",
+            replacement = ""
+        )
+
+    completed <- processed[!(processed %in% interrupted)]
+
+    years <- years[!(years %in% completed)]
+    #######
+    #######
+
+    pbmcapply::pbmclapply(
+        sample(years),
+        function(y) {
+            message("Getting data for year ", y, " ...")
+            output_path <- file.path(pages_dir, paste0("pages_publication_year=", y))
+
+            dir.create(
+                path = output_path,
+                showWarnings = FALSE,
+                recursive = TRUE
+            )
+
+            data <- oa_query(
+                title_and_abstract.search = compact(paste0("(", vision_st, ") AND (", technology_st, ")")),
+                publication_year = y,
+                options = list(
+                    select = c("id", "doi", "authorships", "publication_year", "title", "abstract_inverted_index", "topics")
+                ),
+                verbose = FALSE
+            ) |>
+                IPBES.R::oa_request_IPBES(
+                    count_only = FALSE,
+                    output_path = output_path,
+                    verbose = TRUE
+                )
+        },
+        mc.cores = 8,
+        mc.preschedule = FALSE
+    )
+}
+toc()
+```
+
+The fields `author` and `topics` are serialized in the arrow database and need to be unserialized by using `unserialize_arrow()` on a dataset containing the two columns.
+
+```{r}
+#| label: convert_tca_corpus_arrow
+#| eval: false
+tic()
+
+pages_dir <- file.path(".", "data", "pages")
+arrow_dir <- file.path(".", "data", "corpus")
+
+years <- list.dirs(
+    path = pages_dir,
+    full.names = TRUE,
+    recursive = FALSE
+)
+
+years_done <- list.dirs(
+    path = arrow_dir,
+    full.names = TRUE,
+    recursive = FALSE
+)
+
+years <- years[
+    !(
+        gsub(
+            x = years,
+            pattern = paste0("^", pages_dir, "/pages_publication_year="),
+            replacement = ""
+        ) %in% gsub(
+            x = years_done,
+            pattern = paste0("^", arrow_dir, "/publication_year="),
+            replacement = ""
+        )
+    )
+]
+
+pbapply::pblapply(
+    sample(years),
+    function(year) {
+        message("\n     Processing year ", year, " ...\n")
+        pages <- list.files(
+            path = year,
+            pattern = "^page_",
+            full.names = TRUE,
+            recursive = TRUE
+        )
+        data <- parallel::mclapply(
+            pages,
+            function(page) {
+                p <- readRDS(file.path(page))$results |>
+                    openalexR::works2df(verbose = FALSE)
+                p$author_abbr <- IPBES.R::abbreviate_authors(p)
+                return(p)
+            },
+            mc.cores = 3 # params$mc.cores
+        ) |>
+            do.call(what = rbind)
+
+        saveRDS(
+            data,
+            file = file.path(paste0(year, ".rds"))
+        )
+        # unlink(year, recursive = TRUE)
+
+        data <- serialize_arrow(data)
+
+        # parquetize::write_parquet_at_once(
+        #     data = data,
+        #     path_to_parquet = arrow_dir,
+        #     partition = "yes",
+        #     partitioning = "publication_year"
+        # )
+        arrow::write_dataset(
+            data,
+            path = arrow_dir,
+            partitioning = "publication_year",
+            format = "parquet",
+            existing_data_behavior = "overwrite"
+        )
+    }
+)
+toc()
+```
+
+
+
+
+
+
 ## Results
 
-### Number of hits
-- **vision:**: `r formatC(vision_count, format="f", big.mark=",", digits=0)` hits
-- **technology:** `r formatC(technology_count, format="f", big.mark=",", digits=0)` hits
-- **vision AND technology:** `r formatC(vision_technology_count, format="f", big.mark=",", digits=0)` hits
+### `vision`
 
+Hits for search term **vision:** `r formatC(vision_count, format="f", big.mark=",", digits=0)` hits
+
+Individual terms cobmbined by `OR`:
+```{r}
+#| label: assess_vision
+#|
+
+assess_search_term(readLines(file.path("input", "vision.txt"))) |>
+    dplyr::arrange(desc(count)) |>
+    dplyr::mutate(count = formatC(count, format = "f", big.mark = ",", digits = 0)) |>
+    knitr::kable()
+```
+
+### `technology`
+
+Hits for search term **technology:** `r formatC(technology_count, format="f", big.mark=",", digits=0)` hits
+
+Individual terms cobmbined by `OR`:
+```{r}
+#| label: assess_technology
+#|
+
+assess_search_term(readLines(file.path("input", "technology.txt"))) |>
+    dplyr::arrange(desc(count)) |>
+    dplyr::mutate(count = formatC(count, format = "f", big.mark = ",", digits = 0)) |>
+    knitr::kable()
+```
+
+
+### `vision AND technology`
+
+Hits for search term **vision**: `r formatC(vision_technology_count, format="f", big.mark=",", digits=0)` hits
 
 ### Subfields
 
