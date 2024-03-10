@@ -381,9 +381,9 @@ toc()
 
 
 
-## Results
+# Results
 
-### `vision`
+## `vision`
 
 Hits for search term **vision:** `r formatC(vision_count, format="f", big.mark=",", digits=0)` hits
 
@@ -398,7 +398,7 @@ assess_search_term(readLines(file.path("input", "vision.txt"))) |>
     knitr::kable()
 ```
 
-### `technology`
+## `technology`
 
 Hits for search term **technology:** `r formatC(technology_count, format="f", big.mark=",", digits=0)` hits
 
@@ -414,11 +414,11 @@ assess_search_term(readLines(file.path("input", "technology.txt"))) |>
 ```
 
 
-### `vision AND technology`
+## `vision AND technology`
 
 Hits for search term **vision**: `r formatC(vision_technology_count, format="f", big.mark=",", digits=0)` hits
 
-### Subfields
+## Subfields
 
 The subfields are based on the main topic assigned to each work. There are other topics also assigned, but this one has been identified as the main topic by an algorythm. `count` is the number of works in the `vision AND technology` corpus which have been assigned to the subfield.
 
