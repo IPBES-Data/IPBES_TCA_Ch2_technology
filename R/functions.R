@@ -116,9 +116,30 @@ compact <- function(x) {
 }
 
 
+#' Assess Search Term
+#'
+#' This function assesses the search term by counting the number of occurrences in a given text corpus.
+#'
+#' @param st The search term to be assessed. Each line should be one sub-term. Usually, these are combined by `OR`.
+#' @param remove A regular expression pattern to remove from the search term.
+#' @param excl_others Logical indicating whether to exclude other search terms from the count.
+#' @param mc.cores The number of CPU cores to use for parallel processing.
+#'
+#' @return A data frame with the search term and the corresponding count.
+#'
+#' @importFrom pbmcapply pbmclapply
+#' @importFrom openalexR oa_fetch
+#'
+#' @md
+#'
+#' @examples
+#' assess_search_term(list("climate OR", "change"))
+#'
+#' @keywords internal
 assess_search_term <- function(
     st = NULL,
     remove = " OR$",
+    excl_others = FALSE,
     mc.cores = 8) {
     st <- gsub(pattern = remove, replacement = "", st)
     result <- data.frame(
@@ -126,9 +147,14 @@ assess_search_term <- function(
         count = pbmcapply::pbmclapply(
             st,
             function(x) {
-                excl <- st[!(st %in% x)]
-                r <- openalexR::oa_fetch(
-                    title_and_abstract.search = paste0("(", x, ") NOT (", paste0(excl, collapse = " OR "), ")"),
+                if (excl_others) {
+                    excl <- st[!(st %in% x)]
+                    searchterm <- paste0("(", x, ") NOT (", paste0(excl, collapse = " OR "), ")")
+                } else {
+                    searchterm <- x
+                }
+                openalexR::oa_fetch(
+                    title_and_abstract.search = searchterm,
                     output = "list",
                     count_only = TRUE
                 )$count
