@@ -126,8 +126,9 @@ assess_search_term <- function(
         count = pbmcapply::pbmclapply(
             st,
             function(x) {
+                excl <- st[!(st %in% x)]
                 r <- openalexR::oa_fetch(
-                    title_and_abstract.search = x,
+                    title_and_abstract.search = paste0("(", x, ") NOT (", paste0(excl, collapse = " OR "), ")"),
                     output = "list",
                     count_only = TRUE
                 )$count
