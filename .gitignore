@@ -1,3 +1,6 @@
 /.DS_Store
 data/pages/*
+data/corpus/*
+data/corpus_tca/*
 
+.vscode/*

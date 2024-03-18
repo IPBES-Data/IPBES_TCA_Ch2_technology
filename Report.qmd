@@ -64,6 +64,7 @@ library(openalexR)
 library(arrow)
 library(dplyr)
 library(IPBES.R)
+library(tictoc)
 
 
 
@@ -109,6 +110,7 @@ The search terms are based on the [shared google doc](https://docs.google.com/do
 ## Vision
 
 The search terms is [vision](input/vision.txt){target=_blank}
+Open Alex search.
 
 ```{r}
 #| label: get_vision_count
@@ -126,6 +128,7 @@ vision_count <- openalexR::oa_fetch(
 ## Technology
 
 The search terms is [technology](input/technology.txt){target=_blank}
+Open Alex search.
 
 ```{r}
 #| label: get_technology_count
@@ -140,6 +143,7 @@ technology_count <- openalexR::oa_fetch(
 ```
 
 ## Vision AND technology
+Open Alex search.
 
 The search term is [vision](input/vision.txt){target=_blank} AND [technology](input/technology.txt){target=_blank}
 
@@ -204,6 +208,8 @@ Only then is the actual data read!
 
 Needs to be enabled by setting `eval: true` in the code block below.
 
+## Download TCA Corpus
+
 ```{r}
 #| label: get_tca_corpus
 #| eval: false
@@ -212,85 +218,86 @@ Needs to be enabled by setting `eval: true` in the code block below.
 tic()
 pages_dir <- file.path(".", "data", "pages")
 
-if (!dir.exists(fn)) {
-    dir.create(
-        path = pages_dir,
-        showWarnings = FALSE,
-        recursive = TRUE
+dir.create(
+    path = pages_dir,
+    showWarnings = FALSE,
+    recursive = TRUE
+)
+
+years <- oa_fetch(
+    title_and_abstract.search = compact(paste0("(", vision_st, ") AND (", technology_st, ")")),
+    group_by = "publication_year",
+    paging = "cursor",
+    verbose = FALSE
+)$key
+
+#######
+#######
+processed <- list.dirs(
+    path = pages_dir,
+    full.names = FALSE,
+    recursive = FALSE
+) |>
+    gsub(
+        pattern = paste0("^pages_publication_year=", ""),
+        replacement = ""
     )
 
-    years <- oa_fetch(
-        title_and_abstract.search = compact(paste0("(", vision_st, ") AND (", technology_st, ")")),
-        group_by = "publication_year",
-        paging = "cursor",
-        verbose = FALSE
-    )$key
-
-    #######
-    #######
-    processed <- list.dirs(
-        path = pages_dir,
-        full.names = FALSE,
-        recursive = FALSE
+interrupted <- list.files(
+    path = pages_dir,
+    pattern = "^next_page.rds",
+    full.names = TRUE,
+    recursive = TRUE
+) |>
+    gsub(
+        pattern = paste0("^", pages_dir, "/pages_publication_year=", ""),
+        replacement = ""
     ) |>
-        gsub(
-            pattern = paste0("^pages_publication_year=", ""),
-            replacement = ""
+    gsub(
+        pattern = "/next_page.rds$",
+        replacement = ""
+    )
+
+completed <- processed[!(processed %in% interrupted)]
+
+years <- years[!(years %in% completed)]
+#######
+#######
+
+pbmcapply::pbmclapply(
+    sample(years),
+    function(y) {
+        message("\nGetting data for year ", y, " ...")
+        output_path <- file.path(pages_dir, paste0("pages_publication_year=", y))
+
+        dir.create(
+            path = output_path,
+            showWarnings = FALSE,
+            recursive = TRUE
         )
 
-    interrupted <- list.files(
-        path = pages_dir,
-        pattern = "^next_page.rds",
-        full.names = TRUE,
-        recursive = TRUE
-    ) |>
-        gsub(
-            pattern = paste0("^", pages_dir, "/pages_publication_year=", ""),
-            replacement = ""
+        data <- oa_query(
+            title_and_abstract.search = compact(paste0("(", vision_st, ") AND (", technology_st, ")")),
+            publication_year = y,
+            options = list(
+                select = c("id", "doi", "authorships", "publication_year", "display_name", "abstract_inverted_index", "topics")
+            ),
+            verbose = FALSE
         ) |>
-        gsub(
-            pattern = "/next_page.rds$",
-            replacement = ""
-        )
-
-    completed <- processed[!(processed %in% interrupted)]
-
-    years <- years[!(years %in% completed)]
-    #######
-    #######
-
-    pbmcapply::pbmclapply(
-        sample(years),
-        function(y) {
-            message("Getting data for year ", y, " ...")
-            output_path <- file.path(pages_dir, paste0("pages_publication_year=", y))
-
-            dir.create(
-                path = output_path,
-                showWarnings = FALSE,
-                recursive = TRUE
+            IPBES.R::oa_request_IPBES(
+                count_only = FALSE,
+                output_path = output_path,
+                verbose = TRUE
             )
+    },
+    mc.cores = 1,
+    mc.preschedule = FALSE
+)
 
-            data <- oa_query(
-                title_and_abstract.search = compact(paste0("(", vision_st, ") AND (", technology_st, ")")),
-                publication_year = y,
-                options = list(
-                    select = c("id", "doi", "authorships", "publication_year", "title", "abstract_inverted_index", "topics")
-                ),
-                verbose = FALSE
-            ) |>
-                IPBES.R::oa_request_IPBES(
-                    count_only = FALSE,
-                    output_path = output_path,
-                    verbose = TRUE
-                )
-        },
-        mc.cores = 8,
-        mc.preschedule = FALSE
-    )
-}
 toc()
 ```
+
+## Convert TCA Corpus to Arrow
 
 The fields `author` and `topics` are serialized in the arrow database and need to be unserialized by using `unserialize_arrow()` on a dataset containing the two columns.
 
@@ -329,7 +336,7 @@ years <- years[
 ]
 
 pbapply::pblapply(
-    sample(years),
+    years,
     function(year) {
         message("\n     Processing year ", year, " ...\n")
         pages <- list.files(
@@ -338,48 +345,97 @@ pbapply::pblapply(
             full.names = TRUE,
             recursive = TRUE
         )
-        data <- parallel::mclapply(
-            pages,
-            function(page) {
-                p <- readRDS(file.path(page))$results |>
-                    openalexR::works2df(verbose = FALSE)
-                p$author_abbr <- IPBES.R::abbreviate_authors(p)
-                return(p)
-            },
-            mc.cores = 3 # params$mc.cores
-        ) |>
-            do.call(what = rbind)
+        invisible(
+            pbmcapply::pbmclapply(
+                pages,
+                function(page) {
+                    data <- readRDS(file.path(page))$results |>
+                        openalexR::works2df(verbose = FALSE)
+                    data$author_abbr <- IPBES.R::abbreviate_authors(data)
+                    data <- serialize_arrow(data)
 
-        saveRDS(
-            data,
-            file = file.path(paste0(year, ".rds"))
-        )
-        # unlink(year, recursive = TRUE)
+                    data$page <- page |>
+                        basename() |>
+                        gsub(pattern = "^page_", replacement = "") |>
+                        gsub(pattern = ".rds$", replacement = "")
 
-        data <- serialize_arrow(data)
-
-        # parquetize::write_parquet_at_once(
-        #     data = data,
-        #     path_to_parquet = arrow_dir,
-        #     partition = "yes",
-        #     partitioning = "publication_year"
-        # )
-        arrow::write_dataset(
-            data,
-            path = arrow_dir,
-            partitioning = "publication_year",
-            format = "parquet",
-            existing_data_behavior = "overwrite"
+                    arrow::write_dataset(
+                        data,
+                        path = arrow_dir,
+                        partitioning = c("publication_year", "page"),
+                        format = "parquet",
+                        existing_data_behavior = "overwrite"
+                    )
+                },
+                mc.cores = 6 # params$mc.cores
+            )
         )
     }
 )
 toc()
 ```
 
+## Filter Corpus with TCA Corpus
+```{r}
+ids_technology <- read_corpus(file.path("data", "corpus")) |>
+    dplyr::select(id) |>
+    collect() |>
+    unlist()
+
+ids_tca <- read_corpus(file.path("..", "IPBES_TCA_Corpus", "data", "corpus")) |>
+    dplyr::select(id) |>
+    collect() |>
+    unlist()
+
+ids_subs_tca <- ids_technology[ids_technology %in% ids_tca]
+
+arrow_tca_dir <- file.path(".", "data", "corpus_tca")
+arrow_dir <- file.path(".", "data", "corpus")
 
 
+year_dirs <- list.dirs(
+    path = arrow_dir,
+    full.names = TRUE,
+    recursive = FALSE
+)
+
+year_done <- list.dirs(
+    path = arrow_tca_dir,
+    full.names = TRUE,
+    recursive = FALSE
+)
+
+year_dirs <- year_dirs[!(basename(year_dirs) %in% basename(year_done))]
+
+years <- basename(year_dirs) |>
+    gsub(
+        pattern = "publication_year=",
+        replacement = ""
+    )
+ys <- seq_len(length(year_dirs))
 
 
+pbapply::pblapply(
+    ys,
+    function(y) {
+        data <- read_corpus(year_dirs[[y]]) |>
+            dplyr::collect() |>
+            dplyr::filter(id %in% ids_subs_tca)
+        if (nrow(data) > 0) {
+            data |>
+                dplyr::mutate(publication_year = as.integer(years[[y]])) |>
+                arrow::write_dataset(
+                    path = arrow_tca_dir,
+                    partitioning = "publication_year",
+                    format = "parquet",
+                    existing_data_behavior = "overwrite"
+                )
+        }
+    }
+)
+
+toc()
+```
 
 # Results
 
