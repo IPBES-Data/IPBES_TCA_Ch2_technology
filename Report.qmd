@@ -192,10 +192,6 @@ vision_technology_subfields <- vision_technology_subfields |>
 ```
 
 
-
-
-
-
 # Download `technology AND vision` Corpus
 
 The corpus download will be stored in `data/pages` and the arrow database in `data/corpus`.
@@ -437,11 +433,33 @@ pbapply::pblapply(
 toc()
 ```
 
+## Extract 50 random papers from `technology AND vision` in TCA Corpus
+```{r}
+#| label: extract_random_papers
+#|
+
+fn <- file.path("data", "random_50_technology_in_tca.xlsx")
+
+if (!file.exists(fn)) {
+    set.seed(14)
+    read_corpus("data/corpus_tca") |>
+        dplyr::select(id, author_abbr, display_name, ab) |>
+        dplyr::rename(abstract = ab, title = display_name) |>
+        dplyr::collect() |>
+        dplyr::slice_sample(n = 50) |>
+        dplyr::mutate(
+            abstract = substr(abstract, start = 1, stop = 5000)
+        ) |>
+        writexl::write_xlsx(path = fn)
+}
+
+```
+
 # Results
 
 ## `vision`
 
-Hits for search term **vision:** `r formatC(vision_count, format="f", big.mark=",", digits=0)` hits
+Hits for search term **vision:** `r formatC(vision_count, format="f", big.mark=",", digits=0)` hits in OpenAlex.
 
 Individual terms cobmbined by `OR`:
 ```{r}
@@ -456,7 +474,7 @@ assess_search_term(readLines(file.path("input", "vision.txt"))) |>
 
 ## `technology`
 
-Hits for search term **technology:** `r formatC(technology_count, format="f", big.mark=",", digits=0)` hits
+Hits for search term **technology:** `r formatC(technology_count, format="f", big.mark=",", digits=0)` hits in OpenAlex.
 
 Individual terms cobmbined by `OR`:
 ```{r}
@@ -470,9 +488,24 @@ assess_search_term(readLines(file.path("input", "technology.txt"))) |>
 ```
 
 
-## `vision AND technology`
+## `vision AND technology` in TCA Corpus
 
-Hits for search term **vision**: `r formatC(vision_technology_count, format="f", big.mark=",", digits=0)` hits
+For the TCA Corpus, we do have 
+```{r}
+read_corpus(file.path("data", "corpus_tca")) |>
+    dplyr::select(id) |>
+    dplyr::collect() |>
+    nrow()
+```
+
+number of works.
+
+
+## Random Sample of 50 works
+The file contains the `id`, `author_abbr` and `abstract` of the papers. Two samples were generated:
+
+<!-- - works in the subsidies corpus which can be downloded [here](random_50_subsidies.xlsx){target=_blank}.  -->
+- works in the technology corpus AND in the TCA corpus which can be downloded [here](data/random_50_technology_in_tca.xlsx){target=_blank}. 
 
 ## Subfields
 
