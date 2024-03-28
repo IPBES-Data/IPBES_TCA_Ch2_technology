@@ -66,17 +66,13 @@ library(dplyr)
 library(IPBES.R)
 library(tictoc)
 
-
-
-
-vision_st <- readLines(file.path("input", "vision.txt")) |>
+vision_st <- readLines(file.path("input", "Ch2_technology", "vision.txt")) |>
     paste(collapse = " ")
 
-technology_st <- readLines(file.path("input", "technology.txt")) |>
+technology_st <- readLines(file.path("input", "Ch2_technology", "technology.txt")) |>
     paste(collapse = " ")
 
-source(file.path("R", "functions.R"))
-
+source(file.path("R", "Ch2_technology", "functions.R"))
 ```
 
 ## Working Title
@@ -109,7 +105,7 @@ The search terms are based on the [shared google doc](https://docs.google.com/do
 
 ## Vision
 
-The search terms is [vision](input/vision.txt){target=_blank}
+The search terms is [vision](input/Ch2_technology/vision.txt){target=_blank}
 Open Alex search.
 
 ```{r}
@@ -127,7 +123,7 @@ vision_count <- openalexR::oa_fetch(
 
 ## Technology
 
-The search terms is [technology](input/technology.txt){target=_blank}
+The search terms is [technology](input/Ch2_technology/technology.txt){target=_blank}
 Open Alex search.
 
 ```{r}
@@ -145,7 +141,7 @@ technology_count <- openalexR::oa_fetch(
 ## Vision AND technology
 Open Alex search.
 
-The search term is [vision](input/vision.txt){target=_blank} AND [technology](input/technology.txt){target=_blank}
+The search term is [vision](input/Ch2_technology/vision.txt){target=_blank} AND [technology](input/Ch2_technology/technology.txt){target=_blank}
 
 ### Count
 ```{r}
@@ -194,7 +190,7 @@ vision_technology_subfields <- vision_technology_subfields |>
 
 # Download `technology AND vision` Corpus
 
-The corpus download will be stored in `data/pages` and the arrow database in `data/corpus`.
+The corpus download will be stored in `Ch2_technology/pages` and the arrow database in `data/Ch2_technology/corpus`.
 
 This is not on github!
 
@@ -207,87 +203,21 @@ Needs to be enabled by setting `eval: true` in the code block below.
 ## Download TCA Corpus
 
 ```{r}
-#| label: get_tca_corpus
+#| label: get_technology_corpus
 #| eval: false
 #|
 
 tic()
-pages_dir <- file.path(".", "data", "pages")
 
-dir.create(
-    path = pages_dir,
-    showWarnings = FALSE,
-    recursive = TRUE
-)
-
-years <- oa_fetch(
-    title_and_abstract.search = compact(paste0("(", vision_st, ") AND (", technology_st, ")")),
-    group_by = "publication_year",
-    paging = "cursor",
-    verbose = FALSE
-)$key
-
-#######
-#######
-processed <- list.dirs(
-    path = pages_dir,
-    full.names = FALSE,
-    recursive = FALSE
-) |>
-    gsub(
-        pattern = paste0("^pages_publication_year=", ""),
-        replacement = ""
-    )
-
-interrupted <- list.files(
-    path = pages_dir,
-    pattern = "^next_page.rds",
-    full.names = TRUE,
-    recursive = TRUE
-) |>
-    gsub(
-        pattern = paste0("^", pages_dir, "/pages_publication_year=", ""),
-        replacement = ""
-    ) |>
-    gsub(
-        pattern = "/next_page.rds$",
-        replacement = ""
-    )
-
-completed <- processed[!(processed %in% interrupted)]
-
-years <- years[!(years %in% completed)]
-#######
-#######
-
-pbmcapply::pbmclapply(
-    sample(years),
-    function(y) {
-        message("\nGetting data for year ", y, " ...")
-        output_path <- file.path(pages_dir, paste0("pages_publication_year=", y))
-
-        dir.create(
-            path = output_path,
-            showWarnings = FALSE,
-            recursive = TRUE
-        )
-
-        data <- oa_query(
-            title_and_abstract.search = compact(paste0("(", vision_st, ") AND (", technology_st, ")")),
-            publication_year = y,
-            options = list(
-                select = c("id", "doi", "authorships", "publication_year", "display_name", "abstract_inverted_index", "topics")
-            ),
-            verbose = FALSE
-        ) |>
-            IPBES.R::oa_request_IPBES(
-                count_only = FALSE,
-                output_path = output_path,
-                verbose = TRUE
-            )
-    },
-    mc.cores = 1,
-    mc.preschedule = FALSE
+IPBES.R::corpus_download(
+    pages_dir = file.path(".", "data", "Ch2_technology", "pages"),
+    title_and_abstract_search = compact(paste0("(", vision_st, ") AND (", technology_st, ")")),
+    continue = TRUE,
+    delete_pages_dir = FALSE,
+    set_size = 2000,
+    dry_run = TRUE,
+    verbose = TRUE,
+    mc_cores = 6
 )
 
 toc()
@@ -302,91 +232,41 @@ The fields `author` and `topics` are serialized in the arrow database and need t
 #| eval: false
 tic()
 
-pages_dir <- file.path(".", "data", "pages")
-arrow_dir <- file.path(".", "data", "corpus")
+pages_dir <- file.path(".", "data", "Ch2_technology", "pages")
+arrow_dir <- file.path(".", "data", "Ch2_technology", "corpus")
 
-years <- list.dirs(
-    path = pages_dir,
-    full.names = TRUE,
-    recursive = FALSE
-)
-
-years_done <- list.dirs(
-    path = arrow_dir,
-    full.names = TRUE,
-    recursive = FALSE
-)
-
-years <- years[
-    !(
-        gsub(
-            x = years,
-            pattern = paste0("^", pages_dir, "/pages_publication_year="),
-            replacement = ""
-        ) %in% gsub(
-            x = years_done,
-            pattern = paste0("^", arrow_dir, "/publication_year="),
-            replacement = ""
-        )
-    )
-]
-
-pbapply::pblapply(
-    years,
-    function(year) {
-        message("\n     Processing year ", year, " ...\n")
-        pages <- list.files(
-            path = year,
-            pattern = "^page_",
-            full.names = TRUE,
-            recursive = TRUE
-        )
-        invisible(
-            pbmcapply::pbmclapply(
-                pages,
-                function(page) {
-                    data <- readRDS(file.path(page))$results |>
-                        openalexR::works2df(verbose = FALSE)
-                    data$author_abbr <- IPBES.R::abbreviate_authors(data)
-                    data <- serialize_arrow(data)
-
-                    data$page <- page |>
-                        basename() |>
-                        gsub(pattern = "^page_", replacement = "") |>
-                        gsub(pattern = ".rds$", replacement = "")
-
-                    arrow::write_dataset(
-                        data,
-                        path = arrow_dir,
-                        partitioning = c("publication_year", "page"),
-                        format = "parquet",
-                        existing_data_behavior = "overwrite"
-                    )
-                },
-                mc.cores = 6 # params$mc.cores
-            )
-        )
-    }
+IPBES.R::corpus_pages_to_arrow(
+    pages_dir = pages_dir,
+    arrow_dir = arrow_dir,
+    continue = TRUE,
+    delete_arrow_dir = FALSE,
+    dry_run = TRUE,
+    verbose = TRUE,
+    mc_cores = 3
 )
 toc()
 ```
 
 ## Filter Corpus with TCA Corpus
 ```{r}
-ids_technology <- read_corpus(file.path("data", "corpus")) |>
+#| label: filter_corpus_with_tca
+#| eval: false
+#|
+
+ids_technology <- read_corpus(file.path("data", "Ch2_technology", "corpus")) |>
     dplyr::select(id) |>
     collect() |>
     unlist()
 
-ids_tca <- read_corpus(file.path("..", "IPBES_TCA_Corpus", "data", "corpus")) |>
+ids_tca <- read_corpus(file.path("..", "IPBES_TCA_Corpus", "data", "tca_corpus", "Ch2_technology", "corpus")) |>
     dplyr::select(id) |>
     collect() |>
     unlist()
 
 ids_subs_tca <- ids_technology[ids_technology %in% ids_tca]
 
-arrow_tca_dir <- file.path(".", "data", "corpus_tca")
-arrow_dir <- file.path(".", "data", "corpus")
+arrow_tca_dir <- file.path(".", "data", "Ch2_technology", "corpus_tca")
+arrow_dir <- file.path(".", "data", "Ch2_technology", "corpus")
 
 
 year_dirs <- list.dirs(
@@ -438,11 +318,11 @@ toc()
 #| label: extract_random_papers
 #|
 
-fn <- file.path("data", "random_50_technology_in_tca.xlsx")
+fn <- file.path("data", "Ch2_technology", "random_50_technology_in_tca.xlsx")
 
 if (!file.exists(fn)) {
     set.seed(14)
-    read_corpus("data/corpus_tca") |>
+    read_corpus(file.path("data", "Ch2_technology", "corpus_tca")) |>
         dplyr::select(id, author_abbr, display_name, ab) |>
         dplyr::rename(abstract = ab, title = display_name) |>
         dplyr::collect() |>
@@ -452,7 +332,6 @@ if (!file.exists(fn)) {
         ) |>
         writexl::write_xlsx(path = fn)
 }
-
 ```
 
 # Results
@@ -462,11 +341,15 @@ if (!file.exists(fn)) {
 Hits for search term **vision:** `r formatC(vision_count, format="f", big.mark=",", digits=0)` hits in OpenAlex.
 
 Individual terms cobmbined by `OR`:
+
 ```{r}
 #| label: assess_vision
 #|
 
-assess_search_term(readLines(file.path("input", "vision.txt"))) |>
+assess_search_term(
+    readLines(file.path("input", "Ch2_technology", "vision.txt")),
+    excl_others = TRUE
+) |>
     dplyr::arrange(desc(count)) |>
     dplyr::mutate(count = formatC(count, format = "f", big.mark = ",", digits = 0)) |>
     knitr::kable()
@@ -481,7 +364,10 @@ Individual terms cobmbined by `OR`:
 #| label: assess_technology
 #|
 
-assess_search_term(readLines(file.path("input", "technology.txt"))) |>
+assess_search_term(
+    st = readLines(file.path("input", "Ch2_technology", "technology.txt")),
+    excl_others = TRUE
+) |>
     dplyr::arrange(desc(count)) |>
     dplyr::mutate(count = formatC(count, format = "f", big.mark = ",", digits = 0)) |>
     knitr::kable()
@@ -492,7 +378,7 @@ assess_search_term(readLines(file.path("input", "technology.txt"))) |>
 
 For the TCA Corpus, we do have 
 ```{r}
-read_corpus(file.path("data", "corpus_tca")) |>
+read_corpus(file.path("data", "Ch2_technology", "corpus_tca")) |>
     dplyr::select(id) |>
     dplyr::collect() |>
     nrow()
@@ -505,7 +391,7 @@ number of works.
 The file contains the `id`, `author_abbr` and `abstract` of the papers. Two samples were generated:
 
 <!-- - works in the subsidies corpus which can be downloded [here](random_50_subsidies.xlsx){target=_blank}.  -->
-- works in the technology corpus AND in the TCA corpus which can be downloded [here](data/random_50_technology_in_tca.xlsx){target=_blank}. 
+- works in the technology corpus AND in the TCA corpus which can be downloded [here](data/Ch2_technologyrandom_50_technology_in_tca.xlsx){target=_blank}. 
 
 ## Subfields
 

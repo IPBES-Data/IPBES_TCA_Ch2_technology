@@ -1,6 +1,6 @@
-/.DS_Store
-data/pages/*
-data/corpus/*
-data/corpus_tca/*
-
 .vscode/*
+**/.DS_Store
+**/pages/*
+**/corpus/*
+**/corpus_tca/*
+

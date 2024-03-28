@@ -1,0 +1,58 @@
+Technology OR
+Internet OR
+"Artificial Intelligence" OR
+"Machine Learning" OR
+Blockchain OR
+"Cloud Computing" OR
+"Quantum Computing" OR
+"Virtual Reality" OR
+"Augmented Reality" OR
+"Internet of Things" OR
+"Big Data" OR
+5G OR
+Cybersecurity OR
+Cryptocurrency OR
+Biotechnology OR
+Nanotechnology OR
+Robotics OR
+"Sustainable Technology" OR
+"3D Printing" OR
+"Wearable Technology" OR
+"Autonomous Vehicle" OR
+"Smart Home" OR
+"Digital Currency" OR
+"Edge Computing" OR
+"Facial Recognition" OR
+"Deep Learning" OR
+"Genetic Engineering" OR
+"Renewable Energy" OR
+"Smart Grid" OR
+"Data Science" OR
+Virtualization OR
+Virtualisation OR
+"Internet Privacy" OR
+"E-commerce" OR
+"Social Media" OR
+Software OR
+"Digital Transformation" OR
+"Application Programming Interface" OR
+"API" OR
+"Agile Development" OR
+DevOps OR
+"Machine-to-Machine" OR
+Fintech OR
+"Digital Wallet" OR
+"Cyber-Physical Systems" OR
+"Mixed Reality" OR
+"Computer Vision" OR
+"Speech Recognition" OR
+"Natural Language Processing" OR
+Microservices OR
+"Internet Safety" OR
+"Genetic engineering" OR
+"Digital Ethics" OR
+"Digital Twin" OR
+"Space Technology" OR
+"Computational Technology" OR
+"Clean Energy" OR
+"Circular Economy"
