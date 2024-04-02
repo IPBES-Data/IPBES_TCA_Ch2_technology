@@ -4,3 +4,5 @@
 **/corpus/*
 **/corpus_tca/*
 
+data/Ch2_technology/sent_analysis_technology_tca.parquet
+data/Ch2_technology/sent_analysis_technology.parquet
