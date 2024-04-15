@@ -1,8 +1,13 @@
 .vscode/*
 **/.DS_Store
-**/pages/*
+
+**/pages_complete/*
 **/corpus/*
-**/corpus_tca/*
+**/corpus_complete/*
+
+**/corpus_tca.serialised/*
+**/corpus.serialised/*
 
 data/Ch2_technology/sent_analysis_technology_tca.parquet
 data/Ch2_technology/sent_analysis_technology.parquet
+

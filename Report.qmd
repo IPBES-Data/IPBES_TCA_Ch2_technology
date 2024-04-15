@@ -43,6 +43,30 @@ format:
             body-width: 4000px
             margin-width: 200px
             gutter-width: 1.5rem      
+
+params:
+    gdm_dir: !expr file.path("data", "gdm_dir")
+    #
+    st_vision: !expr paste(readLines(file.path("input", "ch2_technology", "search_terms", "vision.txt")), collapse = " ")
+    st_technology: !expr paste(readLines(file.path("input", "ch2_technology", "search_terms", "technology.txt")), collapse = " ")
+    #
+    st_case: !expr paste(readLines(file.path("..", "IPBES_TCA_Corpus", "input", "tca_corpus", "search terms", "case.txt")), collapse = " ")
+    #
+    pages_dir: !expr file.path(".", "data", "ch2_technology", "pages_complete")
+    #
+    corpus_complete_dir: !expr file.path(".", "data", "ch2_technology", "corpus_complete")
+    corpus_dir: !expr file.path(".", "data", "ch2_technology", "corpus")
+    #
+    corpus_tca_dir: !expr file.path("..", "IPBES_TCA_Corpus", "data", "tca_corpus", "corpus")
+    #
+    fn_count: !expr file.path("data", "ch2_technology", "oa_count.rds")
+    fn_ids_tech_in_tca: !expr file.path("data", "ch2_technology", "ids_tech_in_tca.rds")
+    fn_sent_analysis_parquet: !expr file.path("data", "ch2_technology", "sent_analysis_technology.parquet")
+    fn_random_sample_250: !expr file.path("data", "ch2_technology", "random_250_technology_in_tca.xlsx")
+    fn_publications_over_time: !expr file.path("data", "ch2_technology", "publications_over_time.rds")
+    #
+    fig_publications_over_time: !expr file.path("figures", "ch2_technology", "publications_over_time")
+    temporal_from: 1900
 ---
 
 ```{r}
@@ -53,7 +77,6 @@ if (!exists("params")) {
     params <- rmarkdown::yaml_front_matter("Report.qmd")$params
 }
 
-
 build <- as.integer(readLines("buildNo"))
 build <- build + 1
 writeLines(as.character(build), "buildNo")
@@ -63,21 +86,25 @@ knitr::opts_chunk$set(message = NA)
 library(openalexR)
 library(arrow)
 library(dplyr)
+library(ggplot2)
 library(IPBES.R)
 library(tictoc)
 
-vision_st <- readLines(file.path("input", "ch2_technology", "vision.txt")) |>
-    paste(collapse = " ")
+#####
 
-technology_st <- readLines(file.path("input", "ch2_technology", "technology.txt")) |>
-    paste(collapse = " ")
+get_count <- !file.exists(params$fn_count)
+if (get_count) {
+    oa_count <- list(
+        timestamp = Sys.time()
+    )
+} else {
+    oa_count <- readRDS(params$fn_count)
+}
 
-
-pages_dir <- file.path(".", "data", "ch2_technology", "pages")
-corpus_dir <- file.path(".", "data", "ch2_technology", "corpus")
-corpus_tca_dir <- file.path(".", "data", "ch2_technology", "corpus_tca")
+#####
 
 source(file.path("R", "ch2_technology", "functions.R"))
+
 ```
 
 ## Working Title
@@ -98,32 +125,112 @@ All searches are done on all works in OpenAlex. The search in the TCA Corpus is 
 
 ### The following steps will be done in documented in this report:
 
-- [ ] Do asearch with `vision_st`, `technology_st`, and `vision_st AND technology_st` and determine the  number of hits
+- [ ] Do asearch with `vision_st`, `params$st_technology`, and `params$st_vision AND params$st_technology` and determine the  number of hits
 - [ ] Identify sub-fields (in topics) of hits
 - [ ] Check filtering using sub-fields
-- [ ] Should the complete `vision_st AND technology_st` be downloaded, or only a random subsets? Suggestiopn: 10 sets of 100 random works?
+- [ ] Should the complete `params$st_vision AND params$st_technology` be downloaded, or only a random subsets? Suggestiopn: 10 sets of 100 random works?
 
+# Methods
 
-## Step 1: Determination of numbers
 
 The search terms are based on the [shared google doc](https://docs.google.com/document/d/1_FmxYVhpv2Bu2Gbbxb7cWc49f3soFvc64Qau_x2RAqI){target=_blank}. They are cleaned up for the usage in [OpenAlex](https://openalex.org/){target=_blank}.
+
+## OpenAlex Complete
+
+
+
+
+```{r}
+#| label: get_oa_count
+#|
+
+if (get_count) {
+    oa_count$oa <- openalexR::oa_fetch(
+        entity = "works",
+        search = "",
+        output = "list",
+        count_only = TRUE,
+        verbose = TRUE
+    )$count
+}
+```
+
+```{r}
+#| label: get_oa_years
+#|
+
+if (get_count) {
+    oa_count$oa_years <- openalexR::oa_fetch(
+        group_by = "publication_year",
+        output = "dataframe",
+        verbose = TRUE
+    ) |>
+        dplyr::mutate(
+            publication_year = as.integer(as.character(key_display_name)),
+            key = NULL,
+            key_display_name = NULL,
+            p = count / sum(count)
+        ) |>
+        dplyr::arrange(publication_year) |>
+        dplyr::mutate(
+            p_cum = cumsum(p)
+        ) |>
+        dplyr::select(
+            publication_year, 
+            everything()
+        )
+}
+```
 
 ## Vision
 
 The search terms is [vision](input/ch2_technology/vision.txt){target=_blank}
 Open Alex search.
 
+
+
 ```{r}
 #| label: get_vision_count
 #|
 
-vision_count <- openalexR::oa_fetch(
-    title_and_abstract.search = vision_st,
-    count_only = TRUE,
-    output = "list",
-    verbose = TRUE
-)$count
+if (get_count) {
+    oa_count$vision <- openalexR::oa_fetch(
+        title_and_abstract.search = params$st_vision,
+        count_only = TRUE,
+        output = "list",
+        verbose = TRUE
+    )$count
+}
+
 ```
+```{r}
+#| label: get_vision_years
+#|
+
+if (get_count) {
+    oa_count$vision_years <- openalexR::oa_fetch(
+        title_and_abstract.search = params$st_vision,
+        group_by = "publication_year",
+        output = "dataframe",
+        verbose = TRUE
+    ) |>
+        dplyr::mutate(
+            publication_year = as.integer(as.character(key_display_name)),
+            key = NULL,
+            key_display_name = NULL,
+            p = count / sum(count)
+        ) |>
+        dplyr::arrange(publication_year) |>
+        dplyr::mutate(
+            p_cum = cumsum(p)
+        ) |>
+        dplyr::select(
+            publication_year,
+            everything()
+        )
+}
+```
+
 
 
 ## Technology
@@ -131,81 +238,208 @@ vision_count <- openalexR::oa_fetch(
 The search terms is [technology](input/ch2_technology/technology.txt){target=_blank}
 Open Alex search.
 
+
+
 ```{r}
 #| label: get_technology_count
 #|
 
-technology_count <- openalexR::oa_fetch(
-    title_and_abstract.search = compact(technology_st),
-    count_only = TRUE,
-    output = "list",
-    verbose = TRUE
-)$count
+if (get_count) {
+    oa_count$technology <- openalexR::oa_fetch(
+        title_and_abstract.search = compact(params$st_technology),
+        count_only = TRUE,
+        output = "list",
+        verbose = TRUE
+    )$count
+}
 ```
+
+
+```{r}
+#| label: get_technology_years
+#|
+
+if (get_count) {
+    oa_count$technology_years <- openalexR::oa_fetch(
+        title_and_abstract.search = compact(params$st_technology),
+        group_by = "publication_year",
+        output = "dataframe",
+        verbose = TRUE
+    ) |>
+        dplyr::mutate(
+            publication_year = as.integer(as.character(key_display_name)),
+            key = NULL,
+            key_display_name = NULL,
+            p = count / sum(count)
+        ) |>
+        dplyr::arrange(publication_year) |>
+        dplyr::mutate(
+            p_cum = cumsum(p)
+        ) |>
+        dplyr::select(
+            publication_year,
+            everything()
+        )
+}
+```
+
 
 ## Vision AND technology
 Open Alex search.
 
 The search term is [vision](input/ch2_technology/vision.txt){target=_blank} AND [technology](input/ch2_technology/technology.txt){target=_blank}
 
-### Count
+
+
 ```{r}
 #| label: get_vision_technology_count
 #|
 
-vision_technology_count <-
-    openalexR::oa_fetch(
-        title_and_abstract.search = compact(paste0("(", vision_st, ") AND (", technology_st, ")")),
+if (get_count) {
+    oa_count$vision_technology <- openalexR::oa_fetch(
+        title_and_abstract.search = compact(paste0("(", params$st_vision, ") AND (", params$st_technology, ")")),
         output = "list",
         count_only = TRUE,
         verbose = TRUE
     )$count
+}
 ```
 
-### Count Subfields
 ```{r}
-#| label: get_vision_AND_technology_count_subfield
+#| label: get_vision_technology_years
 #|
 
-vision_technology_subfields <- openalexR::oa_query(
-    title_and_abstract.search = compact(paste0("(", vision_st, ") AND (", technology_st, ")")),
-    group_by = "primary_topic.subfield.id",
-    verbose = TRUE
-) |>
-    openalexR::oa_request() |>
-    dplyr::bind_rows() |>
-    dplyr::arrange(key)
-
-## clean up missing or wrong vision_technology_subfields$key_display_name
-need_cleaning <- is.na(vision_technology_subfields$key_display_name) |
-    !is.na(as.numeric(vision_technology_subfields$key_display_name))
-
-fine <- !need_cleaning
-
-vision_technology_subfields <- vision_technology_subfields |>
-    dplyr::filter(fine) |>
-    dplyr::select(key, key_display_name) |>
-    dplyr::distinct() |>
-    merge(y = vision_technology_subfields[need_cleaning, -2], by = "key") |>
-    dplyr::bind_rows(vision_technology_subfields[fine, ]) |>
-    dplyr::group_by(key, key_display_name) |>
-    dplyr::summarize(count = sum(count))
+if (get_count) {
+    oa_count$vision_technology_years <- openalexR::oa_fetch(
+        title_and_abstract.search = compact(paste0("(", params$st_vision, ") AND (", params$st_technology, ")")),
+        group_by = "publication_year",
+        output = "dataframe",
+        verbose = TRUE
+    ) |>
+        dplyr::mutate(
+            publication_year = as.integer(as.character(key_display_name)),
+            key = NULL,
+            key_display_name = NULL,
+            p = count / sum(count)
+        ) |>
+        dplyr::arrange(publication_year) |>
+        dplyr::mutate(
+            p_cum = cumsum(p)
+        ) |>
+        dplyr::select(
+            publication_year,
+            everything()
+        )
+}
 ```
 
 
-# Download `technology AND vision` Corpus
+```{r}
+#| label: get_vision_technology_subfield_years
+#|
+if (get_count) {
+    oa_count$vision_technology_subfields <- openalexR::oa_query(
+        title_and_abstract.search = compact(paste0("(", params$st_vision, ") AND (", params$st_technology, ")")),
+        group_by = "primary_topic.subfield.id",
+        verbose = TRUE
+    ) |>
+        openalexR::oa_request() |>
+        dplyr::bind_rows() |>
+        dplyr::arrange(key)
 
-The corpus download will be stored in `ch2_technology/pages` and the arrow database in `data/ch2_technology/corpus`.
+    ## clean up missing or wrong vision_technology_subfields$key_display_name
+    need_cleaning <- is.na(oa_count$vision_technology_subfields$key_display_name) |
+        !is.na(as.numeric(oa_count$vision_technology_subfields$key_display_name))
+
+    fine <- !need_cleaning
+
+    oa_count$vision_technology_subfields <- oa_count$vision_technology_subfields |>
+        dplyr::filter(fine) |>
+        dplyr::select(key, key_display_name) |>
+        dplyr::distinct() |>
+        merge(y = oa_count$vision_technology_subfields[need_cleaning, -2], by = "key") |>
+        dplyr::bind_rows(oa_count$vision_technology_subfields[fine, ]) |>
+        dplyr::group_by(key, key_display_name) |>
+        dplyr::summarize(count = sum(count))
+}
+```
+
+
+Open Alex search.
+
+The search term is [vision](input/ch2_technology/vision.txt){target=_blank} AND [technology](input/ch2_technology/technology.txt){target=_blank}
+
+### Count of Publications
+
+```{r}
+#| label: get_vision_technology_case_count
+#| eval: false
+
+# To long search string
+if (get_count) {
+    oa_count$vision_technology_case <- openalexR::oa_fetch(
+        title_and_abstract.search = compact(paste0("(", params$st_vision, ") AND (", params$st_technology, ") AND (", params$st_case, ")")),
+        output = "list",
+        count_only = TRUE,
+        verbose = TRUE
+    )$count
+}
+```
+
+
+```{r}
+#| label: get_vision_technology_case_years
+#|
+
+if (get_count) {
+    oa_count$vision_technology_case_years <- openalexR::oa_fetch(
+        title_and_abstract.search = compact(paste0("(", params$st_vision, ") AND (", params$st_technology, ") AND (", params$st_case, ")")),
+        group_by = "publication_year",
+        output = "dataframe",
+        verbose = TRUE
+    ) |>
+        dplyr::mutate(
+            publication_year = as.integer(as.character(key_display_name)),
+            key = NULL,
+            key_display_name = NULL,
+            p = count / sum(count)
+        ) |>
+        dplyr::arrange(publication_year) |>
+        dplyr::mutate(
+            p_cum = cumsum(p)
+        ) |>
+        dplyr::select(
+            publication_year,
+            everything()
+        )
+}
+```
+
+
+## Save the counts as `r params$fn_count`
+
+```{r}
+#| label: save_oa_count
+#| 
+
+if (get_count) {
+    saveRDS(oa_count, params$fn_count)
+}
+```
+
+## Download `technology AND vision` Corpus from OpenAlex
+
+The corpus download will be stored in `ch2_technology/pages` and the arrow database in `data/ch2_technology/corpus_complete`. This one will be filtered with the TCA / G;obal Corpus and get the final name `data/ch2_technology/corpus`.
 
 This is not on github!
 
-The corpus can be read by running `get_corpus()` which o[pens the database so that then it can be fed into a `dplyr` pipeline. After most `dplyr` functions, the actual data needs to be collected via `collect()`.
+The corpus can be read by running `corpus_read("data/ch2_technology/corpus")` which opens the database so that then it can be fed into a `dplyr` pipeline. After most `dplyr` functions, the actual data needs to be collected via `collect()`.
 
 Only then is the actual data read!
 
 Needs to be enabled by setting `eval: true` in the code block below.
 
-## Download TCA Corpus
+### Download Complete Corpus
 
 ```{r}
 #| label: get_technology_corpus
@@ -216,7 +450,7 @@ tic()
 
 IPBES.R::corpus_download(
     pages_dir = file.path(".", "data", "ch2_technology", "pages"),
-    title_and_abstract_search = compact(paste0("(", vision_st, ") AND (", technology_st, ")")),
+    title_and_abstract_search = compact(paste0("(", params$st_vision, ") AND (", params$st_technology, ")")),
     continue = TRUE,
     delete_pages_dir = FALSE,
     set_size = 2000,
@@ -228,18 +462,20 @@ IPBES.R::corpus_download(
 toc()
 ```
 
-## Convert TCA Corpus to Arrow
+### Convert Technology Corpus to Parquet datase
 
 The fields `author` and `topics` are serialized in the arrow database and need to be unserialized by using `unserialize_arrow()` on a dataset containing the two columns.
 
 ```{r}
 #| label: convert_tca_corpus_arrow
 #| eval: false
+#| 
+
 tic()
 
 IPBES.R::corpus_pages_to_arrow(
-    pages_dir = pages_dir,
-    arrow_dir = corpus_dir,
+    pages_dir = params$pages_dir,
+    arrow_dir = params$corpus_complete_dir,
     continue = TRUE,
     delete_arrow_dir = FALSE,
     dry_run = FALSE,
@@ -249,14 +485,16 @@ IPBES.R::corpus_pages_to_arrow(
 toc()
 ```
 
-## Filter Corpus with TCA Corpus
+### Filter Corpus with TCA Corpus
 ```{r}
 #| label: filter_corpus_with_tca
+#| eval: false
 #|
 
-fn <- file.path("data", "ch2_technology", "ids_subs_tca.rds")
-if (!file.exists(fn)) {
-    ids_technology <- IPBES.R::corpus_read(file.path("data", "ch2_technology", "corpus")) |>
+tic()
+
+if (!file.exists(params$fn_ids_tech_in_tca)) {
+    ids_technology <- IPBES.R::corpus_read(params$corpus_complete) |>
         dplyr::select(id) |>
         collect() |>
         unlist()
@@ -266,19 +504,24 @@ if (!file.exists(fn)) {
         collect() |>
         unlist()
 
-    ids_subs_tca <- ids_technology[ids_technology %in% ids_tca]
+    fn_ids_tech_in_tca <- ids_technology[ids_technology %in% ids_tca]
 
-    saveRDS(ids_subs_tca, fn)
+    rm(ids_technology, ids_tca)
+
+    saveRDS(ids_tech_in_tca, params$fn_ids_tech_in_tca)
 
     IPBES.R::corpus_filter_ids(
-        arrow_dir = corpus_dir,
-        arrow_filter_dir = corpus_tca_dir,
-        filter_ids = ids_subs_tca
+        arrow_dir = params$corpus_complete_dir,
+        arrow_filter_dir = params$corpus_dir,
+        filter_ids = ids_tech_in_tca
     )
+
+    rm(ids_tech_in_tca)
 }
 
 toc()
 ```
+
 
 ## Export data for sentiment analysis
 
@@ -287,39 +530,30 @@ toc()
 #| label: export_sentiment_analysis
 #|
 
-fn <- file.path("data", "ch2_technology", "sent_analysis_technology.parquet")
-if (!file.exists(fn)) {
-    corpus_read(corpus_dir) |>
+if (!file.exists(params$fn_sent_analysis_parquet)) {
+    corpus_read(params$corpus_dir) |>
         dplyr::select(id, publication_year, ab) |>
-        arrow::write_parquet(fn)
+        arrow::write_parquet(params$fn_sent_analysis_parquet)
 }
 
-fn <- file.path("data", "ch2_technology", "sent_analysis_technology_tca.parquet")
-if (!file.exists(fn)) {
-    read_corpus(corpus_tca_dir) |>
-        dplyr::select(id, publication_year, ab) |>
-        arrow::write_parquet(fn)
-}
 ```
 
-## Extract 50 random papers from `technology AND vision` in TCA Corpus
+## Extract 250 random papers from `technology AND vision` in TCA Corpus
 ```{r}
 #| label: extract_random_papers
 #|
 
-fn <- file.path("data", "ch2_technology", "random_50_technology_in_tca.xlsx")
-
-if (!file.exists(fn)) {
+if (!file.exists(params$fn_random_sample_250)) {
     set.seed(14)
-    read_corpus(file.path("data", "ch2_technology", "corpus_tca")) |>
-        dplyr::select(id, author_abbr, display_name, ab) |>
+    read_corpus(params$corpus_dir) |>
+        dplyr::select(id, doi, author_abbr, display_name, ab) |>
         dplyr::rename(abstract = ab, title = display_name) |>
         dplyr::collect() |>
-        dplyr::slice_sample(n = 50) |>
+        dplyr::slice_sample(n = 250) |>
         dplyr::mutate(
             abstract = substr(abstract, start = 1, stop = 5000)
         ) |>
-        writexl::write_xlsx(path = fn)
+        writexl::write_xlsx(path = params$fn_random_sample_250)
 }
 ```
 
@@ -329,155 +563,150 @@ if (!file.exists(fn)) {
 #| label: publications_over_time_data
 ## | |
 
-fn <- file.path("data", "ch_5_subsidies_reform", "publications_over_time.rds")
-
-if (!file.exists(fn)) {
-    data <- read_corpus(corpus_tca_dir) |>
+if (!file.exists(params$fn_publications_over_time)) {
+    read_corpus(params$corpus_tca_dir) |>
         dplyr::select(publication_year) |>
         dplyr::arrange(publication_year) |>
         dplyr::collect() |>
         table() |>
         as.data.frame() |>
-        mutate(
+        dplyr::mutate(
             publication_year = as.integer(as.character(publication_year)),
             p = Freq / sum(Freq),
             p_cum = cumsum(p)
         ) |>
-        rename(
+        dplyr::rename(
             count = Freq
         ) |>
-        dplyr::inner_join(
-            y = openalexR::oa_fetch(
-                group_by = "publication_year",
-                output = "tibble",
-                verbose = FALSE
-            ) |>
-                dplyr::select(
-                    key,
-                    count
-                ) |>
-                dplyr::rename(
-                    publication_year = key,
-                    count_oa = count
-                ) |>
-                dplyr::arrange(publication_year) |>
-                dplyr::mutate(
-                    publication_year = as.integer(as.character(publication_year)),
-                    p_oa = count_oa / sum(count_oa),
-                    p_oa_cum = cumsum(p_oa)
-                )
-        )
-
-    saveRDS(data, fn)
+        # oa complete
+        dplyr::left_join(
+            x = oa_count$oa_years,
+            by = "publication_year",
+            suffix = c("", "_tca")
+        ) |>
+        # oa vision
+        dplyr::left_join(
+            y = oa_count$vision_years,
+            by = "publication_year",
+            suffix = c("", "_vision")
+        ) |>
+        # oa technology
+        dplyr::left_join(
+            y = oa_count$technology_years,
+            by = "publication_year",
+            suffix = c("", "_technology")
+        ) |>
+        # oa vision technology
+        dplyr::left_join(
+            y = oa_count$vision_technology_years,
+            by = "publication_year",
+            suffix = c("", "_technology_vision")
+        ) |>
+        dplyr::rename(
+            count_oa = count,
+            p_oa = p,
+            p_cum_oa = p_cum
+        ) |>
+    saveRDS(file = params$fn_publications_over_time)
 }
-
 ```
 
 ```{r}
 #| label: publications_over_time_figure
-#|
-if (length(list.files(path = file.path("figures", "ch_5_subsidies_reform"), pattern = "publications_over_time")) < 2) {
-    figure <- readRDS(file.path("data", "ch_5_subsidies_reform", "publications_over_time.rds")) |>
-        dplyr::filter(publication_year >= 1900) |>
-        ggplot() +
+
+if (length(list.files(path = dirname(params$fig_publications_over_time), pattern = basename(params$fig_publications_over_time))) < 2) {
+    sec_axi_fact <- 0.5e-5
+    figure <- readRDS(params$fn_publications_over_time) |>
+        dplyr::filter(publication_year >= params$temporal_from) |>
+        ggplot2::ggplot() +
         #
-        geom_bar(aes(x = publication_year, y = p), stat = "identity") +
-        geom_line(aes(x = publication_year, y = p_cum / 5, color = "Cumulative proportion"), size = 1) +
-        geom_line(aes(x = publication_year, y = p_oa_cum / 5, color = "Cumulative proportion OA"), size = 1) +
+        ggplot2::geom_bar(ggplot2::aes(x = publication_year, y = count_tca, fill = "Nmber of publications per year in TCA Corpus"), stat = "identity") +
+        ggplot2::geom_line(ggplot2::aes(x = publication_year, y = p_cum_oa / sec_axi_fact, color = "Cumulative proportion OA Corpus"), size = 1.5) +
+        ggplot2::geom_line(ggplot2::aes(x = publication_year, y = p_cum_tca / sec_axi_fact, color = "Cumulative proportion TCA Corpus"), size = 1.5) +
+        ggplot2::geom_line(ggplot2::aes(x = publication_year, y = p_cum_vision / sec_axi_fact, color = "Cumulative proportion vision only corpus"), size = 1.5) +
+        ggplot2::geom_line(ggplot2::aes(x = publication_year, y = p_cum_technology / sec_axi_fact, color = "Cumulative proportion technology only corpus"), size = 1.5) +
+        ggplot2::geom_line(ggplot2::aes(x = publication_year, y = p_cum_technology_vision / sec_axi_fact, color = "Cumulative proportion Technology Corpus"), size = 1.5) +
         #
-        scale_color_manual(values = c("Cumulative proportion" = "red", "Cumulative proportion OA" = "blue")) +
-        #
-        scale_x_continuous(breaks = seq(1900, 2020, 10)) +
-        scale_y_continuous(
-            "Proportion of publications",
-            sec.axis = sec_axis(~ . * 5, name = "Cumulative proportion") # divide by 100 to scale back the secondary axis
+        ggplot2::scale_color_manual(
+            values = c(
+                "Cumulative proportion OA Corpus" = "#1f77b4",
+                "Cumulative proportion TCA Corpus" = "black",
+                "Cumulative proportion vision only corpus" = "#2ca02c",
+                "Cumulative proportion technology only corpus" = "#d62728",
+                "Cumulative proportion Technology Corpus" = "#9467bd"
+            )
         ) +
-        labs(
+        ggplot2::scale_fill_manual(
+            values = c("Nmber of publications per year in TCA Corpus" = "lightgrey")
+        ) +
+        #
+        ggplot2::scale_x_continuous(breaks = seq(params$temporal_from, 2030, 10)) +
+        ggplot2::scale_y_continuous(
+            "Proportion of publications",
+            sec.axis = ggplot2::sec_axis(~ . * sec_axi_fact, name = "Cumulative proportion") # divide by 100 to scale back the secondary axis
+        ) +
+        ggplot2::labs(
             title = "Publications over time",
             x = "Year",
             y = "Number of publications"
         ) +
-        theme_minimal() +
-        theme(
-            axis.text.y.right = element_text(color = "red"),
-            legend.position = "inside" # Move the legend to the top
+        ggplot2::theme_minimal() +
+        ggplot2::theme(
+            axis.text.y.right = ggplot2::element_text(color = "red"),
+            legend.position = "inside", # Move the legend to the top left position
+            legend.justification = c(0.1, 0.9), # Justify the legend to the top left position
+            legend.background = ggplot2::element_rect(fill = "white", color = "black") # Add a white background to the legend
         )
 
     ggplot2::ggsave(
-        file.path("figures", "ch_5_subsidies_reform", "publications_over_time.pdf"),
+        paste0(params$fig_publications_over_time, ".pdf"),
         width = 12,
-        height = 6,
+        height = 12,
         figure
     )
     ggplot2::ggsave(
-        file.path("figures", "ch_5_subsidies_reform", "publications_over_time.png"),
+        paste0(params$fig_publications_over_time, ".png"),
         width = 12,
-        height = 6,
+        height = 12,
         figure
     )
 
-    rm(figure)
+    rm(figure, sec_axi_fact)
 }
 ```
 
+
 # Results
 
-## `vision`
-
-Hits for search term **vision:** `r formatC(vision_count, format="f", big.mark=",", digits=0)` hits in OpenAlex.
-
-Individual terms cobmbined by `OR`:
+The results are based on data downloaded or accessed at:
 
 ```{r}
-#| label: assess_vision
-#|
+#| label: corpus_time
+#| 
 
-assess_search_term(
-    readLines(file.path("input", "ch2_technology", "vision.txt")),
-    excl_others = TRUE
+c_time <- list.files(
+    path = params$pages_dir,
+    recursive = TRUE, 
+    pattern = ".rds$", 
+    full.names = TRUE
 ) |>
-    dplyr::arrange(desc(count)) |>
-    dplyr::mutate(count = formatC(count, format = "f", big.mark = ",", digits = 0)) |>
-    knitr::kable()
+    file.mtime() |>
+    as.Date() |>
+    unique()
 ```
 
-## `technology`
-
-Hits for search term **technology:** `r formatC(technology_count, format="f", big.mark=",", digits=0)` hits in OpenAlex.
-
-Individual terms cobmbined by `OR`:
-```{r}
-#| label: assess_technology
-#|
-
-assess_search_term(
-    st = readLines(file.path("input", "ch2_technology", "technology.txt")),
-    excl_others = TRUE
-) |>
-    dplyr::arrange(desc(count)) |>
-    dplyr::mutate(count = formatC(count, format = "f", big.mark = ",", digits = 0)) |>
-    knitr::kable()
-```
+- **Technology Corpus**:  located at ``r params$corpus_dir`` downloaded at **`r c_time`** from [OpenAlex](https://openalex.org)
+- **Counts**: obtained from at **`r oa_count$timestamp |> as.Date()`** from [OpenAlex](https://openalex.org)
 
 
 ## `vision AND technology` in TCA Corpus
 
 For the TCA Corpus, we do have 
-```{r}
-read_corpus(file.path("data", "ch2_technology", "corpus_tca")) |>
-    dplyr::select(id) |>
-    dplyr::collect() |>
-    nrow()
-```
-
-number of works.
+**`r read_corpus(params$corpus_dir) |> nrow() |> formatC(format = "f", big.mark = ",", digits = 0)`** number of works.
 
 
-## Random Sample of 50 works
-The file contains the `id`, `author_abbr` and `abstract` of the papers. Two samples were generated:
-
-<!-- - works in the subsidies corpus which can be downloded [here](random_50_subsidies.xlsx){target=_blank}.  -->
-- works in the technology corpus AND in the TCA corpus which can be downloded [here](data/ch2_technologyrandom_50_technology_in_tca.xlsx){target=_blank}. 
+## Random Sample of 250 works
+An Excel file conataining a random sample of 250 works from the Technology Corpus (`technology` AND `vision` AND `nature` AND `transformativechange`) with the fields `id`, `doi`, `author_abbr` and `abstract` of the papers. The Excel file can be downloaded from  [here](params$fn_random_sample_250){target=_blank}. 
 
 ## Subfields
 
@@ -487,7 +716,12 @@ The subfields are based on the main topic assigned to each work. There are other
 
 The easies would be to download the Excel file through the button and to mark the subfields to be filtered out.
 ```{r}
-IPBES.R::table_dt(vision_technology_subfields, fixedColumns = NULL, fn = "Vision Technology Subfields")
+IPBES.R::table_dt((oa_count$vision_technology_subfields |> dplyr::arrange(desc(count))), fixedColumns = NULL, fn = "Vision Technology Subfields")
 ```
 
+## Publications over time
+
+![Publications over time of different corpora](figures/ch2_technology/publications_over_time.png)
+
+A pdf of the graph can be downloaded [here](figures/ch2_technology/publications_over_time.pdf){target=_blank}.
 
