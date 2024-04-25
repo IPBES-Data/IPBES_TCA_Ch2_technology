@@ -16,9 +16,6 @@ author:
 abstract: > 
   A short description what this is about.
   This is not a tracditional abstract, but rather something else ...
-# keywords:
-#   - aaaaa
-#   - bbbbb
 license: "CC BY"
 copyright: 
   holder: No idea
@@ -49,6 +46,9 @@ params:
     #
     st_vision: !expr paste(readLines(file.path("input", "ch2_technology", "search_terms", "vision.txt")), collapse = " ")
     st_technology: !expr paste(readLines(file.path("input", "ch2_technology", "search_terms", "technology.txt")), collapse = " ")
+    st_marine: !expr paste(readLines(file.path("input", "ch2_technology", "search_terms", "marine.txt")), collapse = " ")
+    #
+    fn_sentiment_results: !expr file.path("input", "ch2_technology", "sentiment_results.rds")
     #
     st_case: !expr paste(readLines(file.path("..", "IPBES_TCA_Corpus", "input", "tca_corpus", "search terms", "case.txt")), collapse = " ")
     #
@@ -56,6 +56,8 @@ params:
     #
     corpus_complete_dir: !expr file.path(".", "data", "ch2_technology", "corpus_complete")
     corpus_dir: !expr file.path(".", "data", "ch2_technology", "corpus")
+    corpus_authors_dir: !expr file.path("data", "ch2_technology", "corpus_authors")
+    corpus_topics_dir: !expr file.path("data", "ch2_technology", "corpus_topics")
     #
     corpus_tca_dir: !expr file.path("..", "IPBES_TCA_Corpus", "data", "tca_corpus", "corpus")
     #
@@ -65,8 +67,16 @@ params:
     fn_random_sample_250: !expr file.path("data", "ch2_technology", "random_250_technology_in_tca.xlsx")
     fn_publications_over_time: !expr file.path("data", "ch2_technology", "publications_over_time.rds")
     #
+    fn_sentiment_spatial_data: !expr file.path("data", "ch2_technology", "sentiment_spatial_data.rds")
+    fn_sentiment_temporal_data: !expr file.path("data", "ch2_technology", "sentiment_temporal_data.rds")
+    fn_sentiment_marine_temporal_data: !expr file.path("data", "ch2_technology", "sentiment_marine_temporal_data.rds")
+    fn_marine_sentiment:  !expr file.path("data", "ch2_technology", "sentiment_marine_export.xlsx")
+    #
     fig_publications_over_time: !expr file.path("figures", "ch2_technology", "publications_over_time")
+    #
     temporal_from: 1900
+    min_count_sentiment_timeseries: 10
+
 ---
 
 ```{r}
@@ -85,8 +95,11 @@ knitr::opts_chunk$set(message = NA)
 
 library(openalexR)
 library(arrow)
+library(duckdb)
+library(DBI)
 library(dplyr)
 library(ggplot2)
+library(ggridges)
 library(IPBES.R)
 library(tictoc)
 
@@ -132,10 +145,10 @@ All searches are done on all works in OpenAlex. The search in the TCA Corpus is 
 
 # Methods
 
-
+## From OpenAlex directly
 The search terms are based on the [shared google doc](https://docs.google.com/document/d/1_FmxYVhpv2Bu2Gbbxb7cWc49f3soFvc64Qau_x2RAqI){target=_blank}. They are cleaned up for the usage in [OpenAlex](https://openalex.org/){target=_blank}.
 
-## OpenAlex Complete
+### OpenAlex Complete
 
 
 
@@ -182,7 +195,7 @@ if (get_count) {
 }
 ```
 
-## Vision
+### Vision
 
 The search terms is [vision](input/ch2_technology/vision.txt){target=_blank}
 Open Alex search.
@@ -233,7 +246,7 @@ if (get_count) {
 
 
 
-## Technology
+### Technology
 
 The search terms is [technology](input/ch2_technology/technology.txt){target=_blank}
 Open Alex search.
@@ -284,7 +297,7 @@ if (get_count) {
 ```
 
 
-## Vision AND technology
+### Vision AND technology
 Open Alex search.
 
 The search term is [vision](input/ch2_technology/vision.txt){target=_blank} AND [technology](input/ch2_technology/technology.txt){target=_blank}
@@ -365,11 +378,82 @@ if (get_count) {
 ```
 
 
+
+### Vision AND technology AND marine
 Open Alex search.
 
 The search term is [vision](input/ch2_technology/vision.txt){target=_blank} AND [technology](input/ch2_technology/technology.txt){target=_blank}
 
-### Count of Publications
+
+
+```{r}
+#| label: get_vision_technology_marine_count
+#|
+
+if (get_count) {
+    oa_count$vision_technology_marine <- openalexR::oa_fetch(
+        title_and_abstract.search = compact(paste0("(", params$st_vision, ") AND (", params$st_technology, ") AND (", params$st_marine, ")")),
+        output = "list",
+        count_only = TRUE,
+        verbose = TRUE
+    )$count
+}
+```
+
+```{r}
+#| label: get_vision_technology_marine_years
+#|
+
+if (get_count) {
+    oa_count$vision_technology_marine_years <- openalexR::oa_fetch(
+        title_and_abstract.search = compact(paste0("(", params$st_vision, ") AND (", params$st_technology, ") AND (", params$st_marine, ")")),
+        group_by = "publication_year",
+        output = "dataframe",
+        verbose = TRUE
+    ) |>
+        dplyr::mutate(
+            publication_year = as.integer(as.character(key_display_name)),
+            key = NULL,
+            key_display_name = NULL,
+            p = count / sum(count)
+        ) |>
+        dplyr::arrange(publication_year) |>
+        dplyr::mutate(
+            p_cum = cumsum(p)
+        ) |>
+        dplyr::select(
+            publication_year,
+            everything()
+        )
+}
+```
+
+
+
+```{r}
+#| label: get_vision_technology_marine_ids
+#|
+if (get_count) {
+    oa_count$vision_technology_marine_ids <- openalexR::oa_fetch(
+        title_and_abstract.search = compact(paste0("(", params$st_vision, ") AND (", params$st_technology, ") AND (", params$st_marine, ")")),
+        verbose = TRUE,
+        output = "list",
+    ) |>
+        sapply(
+            FUN = function(x) {
+                x$id
+            }
+        ) |>
+        unique()
+}
+```
+
+
+Open Alex search.
+
+The search term is [vision](input/ch2_technology/vision.txt){target=_blank} AND [technology](input/ch2_technology/technology.txt){target=_blank}
+
+#### Count of Publications
 
 ```{r}
 #| label: get_vision_technology_case_count
@@ -416,7 +500,7 @@ if (get_count) {
 ```
 
 
-## Save the counts as `r params$fn_count`
+### Save the counts as `r params$fn_count`
 
 ```{r}
 #| label: save_oa_count
@@ -523,7 +607,65 @@ toc()
 ```
 
 
-## Export data for sentiment analysis
+
+Check the number of dulicates before running this next block, and then verify the new corpus afterwards. RUN ONLY MANUALY!
+
+```{r}
+#| label: fix_duplicate_ids_TEMPORARY
+#| eval: false
+#|
+
+ONLY RUN MANUALLY!!!!!!!!!!!!!!!!!!!!!!!
+
+(read_corpus(params$corpus_dir) |> group_by(id) |> summarize(n = n()) |> filter(n > 1) |> collect() |> nrow()) / (corpus_read(params$corpus_dir) |> nrow())
+
+years <- IPBES.R::corpus_read(params$corpus_dir) |>
+    distinct(publication_year) |>
+    collect() |>
+    unlist() |>
+    as.vector() |>
+    sort()
+
+lapply(
+    years,
+    function(y) {
+        message("\nProcessing year: ", y)
+        tic()
+        dataset <- IPBES.R::corpus_read(params$corpus_dir) |>
+            dplyr::filter(publication_year == y) |>
+            dplyr::collect() |>
+            group_by(id) |>
+            slice_max(
+                publication_year,
+                n = 1,
+                with_ties = FALSE,
+                na_rm = TRUE
+            )
+        # unlink(
+        #     file.path(params$corpus_dir, paste0("publication_year=", y)),
+        #     recursive = TRUE,
+        #     force = TRUE
+        # )
+        arrow::write_dataset(
+            dataset = dataset,
+            path = paste0(params$corpus_dir, "_deduplicated"),
+            partitioning = c("publication_year", "set"),
+            format = "parquet",
+            existing_data_behavior = "overwrite"
+        )
+        toc()
+    }
+)
+
+(read_corpus("./data/ch2_technology/corpus_deduplicated") |> group_by(id) |> summarize(n = n()) |> filter(n > 1) |> collect() |> nrow()) / (corpus_read("./data/ch2_technology/corpus_deduplicated") |> nrow())
+
+rename corpora now 
+
+NOW IF EVERYTHING IS OK, DELETE THE OLD CORPUS AND RENAME THE NEW ONE
+```
+
+
+ ## Export data for sentiment analysis
 
 
 ```{r}
@@ -557,6 +699,53 @@ if (!file.exists(params$fn_random_sample_250)) {
 }
 ```
 
+
+## Extract Authors
+
+```{r}
+#| label: authors_technology_corpus_data
+#|
+
+if (!dir.exists(params$corpus_authors_dir)) {
+    con <- duckdb::dbConnect(duckdb::duckdb(), read_only = FALSE)
+
+    corpus_read(params$corpus_dir) |>
+        arrow::to_duckdb(table_name = "corpus", con = con) |>
+        invisible()
+
+
+    paste0(
+        "CREATE VIEW corpus_unnest AS ",
+        "SELECT  ",
+        "corpus.id AS work_id,  ",
+        "corpus.publication_year AS publication_year,  ",
+        "UNNEST(author).au_id AS au_id,  ",
+        "UNNEST(author).au_display_name AS au_display_name, ",
+        "UNNEST(author).au_orcid AS au_orcid,  ",
+        "UNNEST(author).author_position AS author_position,  ",
+        "UNNEST(author).is_corresponding AS is_corresponding,  ",
+        "UNNEST(author).au_affiliation_raw AS au_affiliation_raw,  ",
+        "UNNEST(author).institution_id AS institution_id,  ",
+        "UNNEST(author).institution_display_name AS institution_display_name,  ",
+        "UNNEST(author).institution_ror AS institution_ror,  ",
+        "UNNEST(author).institution_country_code AS institution_country_code,  ",
+        "UNNEST(author).institution_type AS institution_type,  ",
+        "UNNEST(author).institution_lineage AS institution_lineage  ",
+        "FROM  ",
+        "corpus "
+    ) |> DBI::dbExecute(conn = con)
+
+    paste0(
+        "COPY ( ",
+        "SELECT * FROM corpus_unnest ",
+        ") TO '", params$corpus_authors_dir, "' ",
+        "(FORMAT PARQUET, COMPRESSION 'SNAPPY', PARTITION_BY 'publication_year')"
+    ) |>
+        dbExecute(conn = con)
+
+    duckdb::dbDisconnect(con, shutdown = TRUE)
+}
+```
 
 ## Publications over time
 ```{r}
@@ -676,6 +865,758 @@ if (length(list.files(path = dirname(params$fig_publications_over_time), pattern
 ```
 
 
+## Sentiment Analysis
+
+```{r}
+#| label: prepare_sent_results
+#| eval: false
+#| 
+
+read.csv("input/ch2_technology/sent_analysis_technology_results_MD.csv") |>
+    dplyr::group_by(id) |>
+    dplyr::slice_min(
+        order_by = row_number(), 
+        n = 1
+    ) |>
+    saveRDS(file = params$fn_sentiment_results)
+
+```
+
+### Spatial
+
+
+```{r}
+#| label: sentiment_per_countries_data
+#|
+
+if (!file.exists(params$fn_sentiment_spatial_data)) {
+    data <- corpus_read(params$corpus_authors_dir) |>
+        dplyr::select(
+            work_id,
+            institution_country_code
+        ) |>
+        dplyr::filter(
+            !is.na(institution_country_code)
+        ) |>
+        collect() |>
+        mutate(
+            iso3c = countrycode::countrycode(
+                institution_country_code,
+                origin = "iso2c",
+                destination = "iso3c"
+            ),
+            institution_country_code = NULL
+        ) |>
+        dplyr::left_join(
+            readRDS(params$fn_sentiment_results) |>
+                dplyr::select(
+                    work_id = id,
+                    neg,
+                    neu,
+                    pos,
+                    compound
+                ) ,
+            by = "work_id"
+        ) |>
+        dplyr::group_by(iso3c) |>
+        dplyr::summarize(
+            mean_neg = mean(neg, na.rm = TRUE),
+            mean_neu = mean(neu, na.rm = TRUE),
+            mean_pos = mean(pos, na.rm = TRUE),
+            mean_compound = mean(compound, na.rm = TRUE),
+            n = n()
+        ) |>
+        dplyr::arrange(
+            dplyr::desc(mean_neg)
+        ) |>
+        # Filter out missing countries - only necessary as analysis not completed yet
+        dplyr::filter(
+            !is.nan(mean_neg)
+        ) |>
+        saveRDS(file = params$fn_sentiment_spatial_data)
+}
+```
+
+
+```{r}
+#| label: sentiment_neu_per_countries_map
+#|
+
+if (length(list.files(path = file.path("maps", "ch2_technology"), pattern = "sentiment_neu_per_countries")) < 4) {
+    data <- readRDS(params$fn_sentiment_spatial_data)
+
+    map <- data |>
+        map_country_codes(
+            map_type = "countries",
+            values = "mean_neu",
+            geodata_path = params$gdm_dir
+        ) +
+        ggplot2::scale_fill_gradient2(low = "#E69F00", mid = "white", high = "#56B4E9", midpoint = 0) +
+        ggplot2::ggtitle("Mean neutral sentiment (0 - 1) - all countries")
+
+    map_sel <- data |>
+        dplyr::filter(n > params$min_count_sentiment_timeseries) |>
+        map_country_codes(
+            map_type = "countries",
+            values = "mean_neu",
+            geodata_path = params$gdm_dir
+        ) +
+        ggplot2::scale_fill_gradient2(low = "#E69F00", mid = "white", high = "#56B4E9", midpoint = 0) +
+        ggplot2::ggtitle("Mean neutral sentiment (0 - 1) - more than 10 works")
+
+    ggplot2::ggsave(
+        file.path("maps", "ch2_technology", "sentiment_neu_per_countries_all.pdf"),
+        width = 12,
+        height = 8,
+        map
+    )
+    ggplot2::ggsave(
+        file.path("maps", "ch2_technology", "sentiment_neu_per_countries_all.png"),
+        width = 12,
+        height = 8,
+        map
+    )
+
+    ggplot2::ggsave(
+        file.path("maps", "ch2_technology", "sentiment_neu_per_countries_10.pdf"),
+        width = 12,
+        height = 8,
+        map_sel
+    )
+    ggplot2::ggsave(
+        file.path("maps", "ch2_technology", "sentiment_neu_per_countries_10.png"),
+        width = 12,
+        height = 8,
+        map_sel
+    )
+
+    rm(map, data)
+}
+```
+
+
+```{r}
+#| label: sentiment_pos_per_countries_map
+#|
+
+if (length(list.files(path = file.path("maps", "ch2_technology"), pattern = "sentiment_pos_per_countries")) < 4) {
+    data <- readRDS(params$fn_sentiment_spatial_data)
+
+    map <- data |>
+        map_country_codes(
+            map_type = "countries",
+            values = "mean_pos",
+            geodata_path = params$gdm_dir
+        ) +
+        ggplot2::scale_fill_gradient2(low = "#E69F00", mid = "white", high = "#56B4E9", midpoint = 0) +
+        ggplot2::ggtitle("Mean positive sentiment (0 - 1) - all countries")
+
+    map_sel <- data |>
+        dplyr::filter(n > params$min_count_sentiment_timeseries) |>
+        map_country_codes(
+            map_type = "countries",
+            values = "mean_pos",
+            geodata_path = params$gdm_dir
+        ) +
+        ggplot2::scale_fill_gradient2(low = "#E69F00", mid = "white", high = "#56B4E9", midpoint = 0) +
+        ggplot2::ggtitle("Mean positive sentiment (0 - 1) - more than 10 works")
+
+    ggplot2::ggsave(
+        file.path("maps", "ch2_technology", "sentiment_pos_per_countries_all.pdf"),
+        width = 12,
+        height = 8,
+        map
+    )
+    ggplot2::ggsave(
+        file.path("maps", "ch2_technology", "sentiment_pos_per_countries_all.png"),
+        width = 12,
+        height = 8,
+        map
+    )
+
+    ggplot2::ggsave(
+        file.path("maps", "ch2_technology", "sentiment_pos_per_countries_10.pdf"),
+        width = 12,
+        height = 8,
+        map_sel
+    )
+    ggplot2::ggsave(
+        file.path("maps", "ch2_technology", "sentiment_pos_per_countries_10.png"),
+        width = 12,
+        height = 8,
+        map_sel
+    )
+
+    rm(map, data)
+}
+```
+
+```{r}
+#| label: sentiment_neg_per_countries_map
+#|
+if (length(list.files(path = file.path("maps", "ch2_technology"), pattern = "sentiment_neg_per_countries")) < 4) {
+    data <- readRDS(params$fn_sentiment_spatial_data)
+
+    map <- data |>
+        map_country_codes(
+            map_type = "countries",
+            values = "mean_neg",
+            geodata_path = params$gdm_dir
+        ) +
+        ggplot2::scale_fill_gradient2(low = "#E69F00", mid = "white", high = "#56B4E9", midpoint = 0) +
+        ggplot2::ggtitle("Mean negative sentiment (0 - 1) - all countries")
+
+    map_sel <- data |>
+        dplyr::filter(n > params$min_count_sentiment_timeseries) |>
+        map_country_codes(
+            map_type = "countries",
+            values = "mean_pos",
+            geodata_path = params$gdm_dir
+        ) +
+        ggplot2::scale_fill_gradient2(low = "#E69F00", mid = "white", high = "#56B4E9", midpoint = 0) +
+        ggplot2::ggtitle("Mean negative sentiment (0 - 1) - more than 10 works")
+
+
+    ggplot2::ggsave(
+        file.path("maps", "ch2_technology", "sentiment_neg_per_countries_all.pdf"),
+        width = 12,
+        height = 8,
+        map
+    )
+    ggplot2::ggsave(
+        file.path("maps", "ch2_technology", "sentiment_neg_per_countries_all.png"),
+        width = 12,
+        height = 8,
+        map
+    )
+
+    ggplot2::ggsave(
+        file.path("maps", "ch2_technology", "sentiment_neg_per_countries_10.pdf"),
+        width = 12,
+        height = 8,
+        map_sel
+    )
+    ggplot2::ggsave(
+        file.path("maps", "ch2_technology", "sentiment_neg_per_countries_10.png"),
+        width = 12,
+        height = 8,
+        map_sel
+    )
+
+    rm(map, data)
+}
+```
+
+
+
+```{r}
+#| label: sentiment_compound_per_countries_map
+#|
+
+if (length(list.files(path = file.path("maps", "ch2_technology"), pattern = "sentiment_comp_per_countries")) < 4) {
+    data <- readRDS(params$fn_sentiment_spatial_data)
+
+    map <- data |>
+        map_country_codes(
+            map_type = "countries",
+            values = "mean_compound",
+            geodata_path = params$gdm_dir
+        ) +
+        ggplot2::scale_fill_gradient2(low = "#E69F00", mid = "white", high = "#56B4E9", midpoint = 0) +
+        ggplot2::ggtitle("Mean compound sentiment (-1: negative; 1: positive) - all countries")
+
+    map_sel <- data |>
+        dplyr::filter(n > params$min_count_sentiment_timeseries) |>
+        map_country_codes(
+            map_type = "countries",
+            values = "mean_compound",
+            geodata_path = params$gdm_dir
+        ) +
+        ggplot2::scale_fill_gradient2(low = "#E69F00", mid = "white", high = "#56B4E9", midpoint = 0) +
+        ggplot2::ggtitle("Mean compound sentiment (-1: negative; 1: positive) - more than 10 works")
+
+    ggplot2::ggsave(
+        file.path("maps", "ch2_technology", "sentiment_comp_per_countries_all.pdf"),
+        width = 12,
+        height = 8,
+        map
+    )
+    ggplot2::ggsave(
+        file.path("maps", "ch2_technology", "sentiment_comp_per_countries_all.png"),
+        width = 12,
+        height = 8,
+        map
+    )
+
+    ggplot2::ggsave(
+        file.path("maps", "ch2_technology", "sentiment_comp_per_countries_10.pdf"),
+        width = 12,
+        height = 8,
+        map_sel
+    )
+    ggplot2::ggsave(
+        file.path("maps", "ch2_technology", "sentiment_comp_per_countries_10.png"),
+        width = 12,
+        height = 8,
+        map_sel
+    )
+
+    rm(map, data)
+}
+```
+
+
+### Timeseries
+
+```{r}
+#| label: sentiments_over_time_data
+#|
+
+if (!file.exists(params$fn_sentiment_temporal_data)) {
+    data <- readRDS(params$fn_sentiment_results) |>
+        select(
+            work_id = id,
+            year = date,
+            neg,
+            neu,
+            pos,
+            compound
+        ) |>
+        dplyr::group_by(year) |>
+        dplyr::summarize(
+            neg = mean(neg),
+            neu = mean(neu),
+            pos = mean(pos),
+            compound = mean(compound),
+            n = n()
+        ) |>
+        saveRDS(file = params$fn_sentiment_temporal_data)
+}
+```
+
+
+```{r}
+#| label: sentiments_marine_over_time_data
+#|
+
+if (!file.exists(params$fn_sentiment_marine_temporal_data)) {
+    data <- readRDS(params$fn_sentiment_results) |>
+        select(
+            work_id = id,
+            year = date,
+            neg,
+            neu,
+            pos,
+            compound
+        ) |>
+        dplyr::filter(
+            work_id %in% oa_count$vision_technology_marine_ids
+        ) |>
+        dplyr::group_by(year) |>
+        dplyr::summarize(
+            neg = mean(neg),
+            neu = mean(neu),
+            pos = mean(pos),
+            compound = mean(compound),
+            n = n()
+        ) |>
+        saveRDS(file = params$fn_sentiment_marine_temporal_data)
+}
+
+```
+
+```{r}
+#| label: sentiments_over_time_all_figure
+#|
+
+if (length(list.files(path = file.path("figures", "ch2_technology"), pattern = "sentiments_over_time")) < 2) {
+    figure <- readRDS(params$fn_sentiment_temporal_data) |>
+        dplyr::filter(
+            n > params$min_count_sentiment_timeseries
+        ) |>
+        tidyr::pivot_longer(cols = c(neg, neu, pos, compound), names_to = "type", values_to = "value") |>
+        ggplot2::ggplot() +
+        ggplot2::geom_line(aes(x = year, y = value, color = type, linetype = type)) +
+        ggplot2::scale_color_manual(values = c("black", "red", "blue", "green")) +
+        ggplot2::labs(
+            title = paste0("Sentiment Analysis Scores (n > ", params$min_count_sentiment_timeseries, ")"),
+            x = "Year",
+            y = "Score",
+            color = "Type",
+            linetype = "Type"
+        ) +
+        ggplot2::theme_minimal()
+
+
+    ggplot2::ggsave(
+        file.path("figures", "ch2_technology", "sentiments_over_time.pdf"),
+        width = 12,
+        height = 6,
+        figure
+    )
+    ggplot2::ggsave(
+        file.path("figures", "ch2_technology", "sentiments_over_time.png"),
+        width = 12,
+        height = 6,
+        figure
+    )
+
+    rm(figure)
+}
+```
+
+```{r}
+#| label: sentiments_over_time_table_neg_pos_figure
+#|
+
+if (length(list.files(path = file.path("figures", "ch2_technology"), pattern = "sentiments_over_time_neg_pos")) < 2) {
+    figure <- readRDS(params$fn_sentiment_temporal_data) |>
+        dplyr::filter(
+            n > params$min_count_sentiment_timeseries
+        ) |>
+        tidyr::pivot_longer(cols = c(neg, pos), names_to = "type", values_to = "value") |>
+        ggplot2::ggplot() +
+        ggplot2::geom_line(aes(x = year, y = value, color = type, linetype = type)) +
+        ggplot2::scale_color_manual(values = c("black", "red", "blue", "green")) +
+        ggplot2::labs(
+            title = paste0("Sentiment Analysis Scores (n > ", params$min_count_sentiment_timeseries, ")"),
+            x = "Year",
+            y = "Score",
+            color = "Type",
+            linetype = "Type"
+        ) +
+        ggplot2::theme_minimal()
+
+
+    ggplot2::ggsave(
+        file.path("figures", "ch2_technology", "sentiments_over_time_neg_pos.pdf"),
+        width = 12,
+        height = 6,
+        figure
+    )
+    ggplot2::ggsave(
+        file.path("figures", "ch2_technology", "sentiments_over_time_neg_pos.png"),
+        width = 12,
+        height = 6,
+        figure
+    )
+
+    rm(figure)
+}
+```
+
+
+```{r}
+#| label: sentiments_marine_over_time_table_neg_pos_figure
+#|
+
+if (length(list.files(path = file.path("figures", "ch2_technology"), pattern = "sentiments_marine_over_time_neg_pos")) < 2) {
+    figure <- readRDS(params$fn_sentiment_marine_temporal_data) |>
+        dplyr::filter(
+            n > params$min_count_sentiment_timeseries
+        ) |>
+        tidyr::pivot_longer(cols = c(neg, pos), names_to = "type", values_to = "value") |>
+        ggplot2::ggplot() +
+        ggplot2::geom_line(aes(x = year, y = value, color = type, linetype = type)) +
+        ggplot2::scale_color_manual(values = c("black", "red", "blue", "green")) +
+        ggplot2::labs(
+            title = paste0("Sentiment Analysis Scores (n > ", params$min_count_sentiment_timeseries, ")"),
+            x = "Year",
+            y = "Score",
+            color = "Type",
+            linetype = "Type"
+        ) +
+        ggplot2::theme_minimal()
+
+
+    ggplot2::ggsave(
+        file.path("figures", "ch2_technology", "sentiments_marine_over_time_neg_pos.pdf"),
+        width = 12,
+        height = 6,
+        figure
+    )
+    ggplot2::ggsave(
+        file.path("figures", "ch2_technology", "sentiments_marine_over_time_neg_pos.png"),
+        width = 12,
+        height = 6,
+        figure
+    )
+
+    rm(figure)
+}
+```
+
+```{r}
+#| label: sentiments_neg_over_time_figure
+#|
+
+if (length(list.files(path = file.path("figures", "ch2_technology"), pattern = "sentiments_neg_over_time")) < 2) {
+    figure <- readRDS(params$fn_sentiment_temporal_data) |>
+        dplyr::filter(
+            n > params$min_count_sentiment_timeseries
+        ) |>
+        ggplot2::ggplot() +
+        ggplot2::geom_line(ggplot2::aes(x = year, y = neg)) +
+        ggplot2::labs(
+            title = paste0("Sentiment Analysis negative Score (n > ", params$min_count_sentiment_timeseries, ")"),
+            x = "Year",
+            y = "Negative score"
+        ) +
+        ggplot2::theme_minimal()
+
+    ggplot2::ggsave(
+        file.path("figures", "ch2_technology", "sentiments_neg_over_time.pdf"),
+        width = 12,
+        height = 6,
+        figure
+    )
+    ggplot2::ggsave(
+        file.path("figures", "ch2_technology", "sentiments_neg_over_time.png"),
+        width = 12,
+        height = 6,
+        figure
+    )
+
+    rm(figure)
+}
+```
+
+```{r}
+#| label: sentiments_neu_over_time_figure
+#|
+if (length(list.files(path = file.path("figures", "ch2_technology"), pattern = "sentiments_neu_over_time")) < 2) {
+    figure <- readRDS(params$fn_sentiment_temporal_data) |>
+        dplyr::filter(
+            n > params$min_count_sentiment_timeseries
+        ) |>
+        ggplot2::ggplot() +
+        ggplot2::geom_line(ggplot2::aes(x = year, y = neu)) +
+        ggplot2::labs(
+            title = paste0("Sentiment Analysis neutral Score (n > ", params$min_count_sentiment_timeseries, ")"),
+            x = "Year",
+            y = "Neutral score"
+        ) +
+        ggplot2::theme_minimal()
+
+    ggplot2::ggsave(
+        file.path("figures", "ch2_technology", "sentiments_neu_over_time.pdf"),
+        width = 12,
+        height = 6,
+        figure
+    )
+    ggplot2::ggsave(
+        file.path("figures", "ch2_technology", "sentiments_neu_over_time.png"),
+        width = 12,
+        height = 6,
+        figure
+    )
+
+    rm(figure)
+}
+```
+
+
+```{r}
+#| label: sentiments_pos_over_time_figure
+#|
+
+if (length(list.files(path = file.path("figures", "ch2_technology"), pattern = "sentiments_pos_over_time")) < 2) {
+    figure <- readRDS(params$fn_sentiment_temporal_data) |>
+        dplyr::filter(
+            n > params$min_count_sentiment_timeseries
+        ) |>
+        ggplot2::ggplot() +
+        ggplot2::geom_line(ggplot2::aes(x = year, y = pos)) +
+        ggplot2::labs(
+            title = paste0("Sentiment Analysis positive Score (n > ", params$min_count_sentiment_timeseries, ")"),
+            x = "Year",
+            y = "Positive score"
+        ) +
+        ggplot2::theme_minimal()
+
+    ggplot2::ggsave(
+        file.path("figures", "ch2_technology", "sentiments_pos_over_time.pdf"),
+        width = 12,
+        height = 6,
+        figure
+    )
+    ggplot2::ggsave(
+        file.path("figures", "ch2_technology", "sentiments_pos_over_time.png"),
+        width = 12,
+        height = 6,
+        figure
+    )
+
+    rm(figure)
+}
+```
+
+
+```{r}
+#| label: sentiments_comp_over_time_figure
+#|
+if (length(list.files(path = file.path("figures", "ch2_technology"), pattern = "sentiments_comp_over_time")) < 2) {
+    figure <- readRDS(params$fn_sentiment_temporal_data) |>
+        dplyr::filter(
+            n > params$min_count_sentiment_timeseries
+        ) |>
+        ggplot2::ggplot() +
+        ggplot2::geom_line(ggplot2::aes(x = year, y = compound)) +
+        ggplot2::labs(
+            title = paste0("Sentiment Analysis Compound Score (n > ", params$min_count_sentiment_timeseries, ")"),
+            x = "Year",
+            y = "Compound score"
+        ) +
+        ggplot2::theme_minimal()
+
+    ggplot2::ggsave(
+        file.path("figures", "ch2_technology", "sentiments_comp_over_time.pdf"),
+        width = 12,
+        height = 6,
+        figure
+    )
+    ggplot2::ggsave(
+        file.path("figures", "ch2_technology", "sentiments_comp_over_time.png"),
+        width = 12,
+        height = 6,
+        figure
+    )
+
+    rm(figure)
+}
+```
+
+```{r}
+#| label: sentiments_marine_over_time_neg_pos_ridgeplot_figure
+#|
+
+if (length(list.files(path = file.path("figures", "ch2_technology"), pattern = "sentiments_over_time_neg_pos_ridge")) < 2) {
+    figure <- readRDS(params$fn_sentiment_results) |>
+        select(
+            work_id = id,
+            year = date,
+            neg,
+            neu,
+            pos,
+            compound
+        ) |>
+        dplyr::ungroup() |>
+        dplyr::filter(
+            year >= 1980
+        ) |>
+        mutate(
+            year = as.factor(year)
+        ) |>
+        ggplot() +
+        geom_density_ridges(aes(x = pos, y = year, fill = "positive"), rel_min_height = 0.005) +
+        geom_density_ridges(aes(x = -neg, y = year, fill = "negative"), rel_min_height = 0.005)
+
+    # Calculate the number of points per year
+    counts <- figure$data %>%
+        group_by(year) %>%
+        summarise(
+            n = n()
+        )
+
+    # Add the number of points per year as text
+    figure <- figure +
+        geom_text(data = counts, aes(x = Inf, y = year, label = n), hjust = "inward", vjust = 0.5)
+
+
+
+    ggplot2::ggsave(
+        file.path("figures", "ch2_technology", "sentiments_marine_over_time_neg_pos_ridge.pdf"),
+        width = 12,
+        height = 6,
+        figure
+    )
+    ggplot2::ggsave(
+        file.path("figures", "ch2_technology", "sentiments_marine_over_time_neg_pos_ridge.png"),
+        width = 12,
+        height = 6,
+        figure
+    )
+
+    rm(figure)
+}
+```
+
+
+```{r}
+#| label: sentiments_marine_over_time_neg_pos_figure
+#|
+
+if (length(list.files(path = file.path("figures", "ch2_technology"), pattern = "sentiments_over_time_neg_pos")) < 2) {
+    figure <- readRDS(params$fn_sentiment_temporal_data) |>
+        dplyr::filter(
+            n > params$min_count_sentiment_timeseries
+        ) |>
+        tidyr::pivot_longer(cols = c(neg, pos), names_to = "type", values_to = "value") |>
+        ggplot2::ggplot() +
+        ggplot2::geom_line(aes(x = year, y = value, color = type, linetype = type)) +
+        ggplot2::scale_color_manual(values = c("black", "red", "blue", "green")) +
+        ggplot2::labs(
+            title = paste0("Sentiment Analysis Scores (n > ", params$min_count_sentiment_timeseries, ")"),
+            x = "Year",
+            y = "Score",
+            color = "Type",
+            linetype = "Type"
+        ) +
+        ggplot2::theme_minimal()
+
+
+    ggplot2::ggsave(
+        file.path("figures", "ch2_technology", "sentiments_over_time_neg_pos.pdf"),
+        width = 12,
+        height = 6,
+        figure
+    )
+    ggplot2::ggsave(
+        file.path("figures", "ch2_technology", "sentiments_over_time_neg_pos.png"),
+        width = 12,
+        height = 6,
+        figure
+    )
+
+    rm(figure)
+}
+```
+
+
+## Extract `marine papers with sentiment scores
+
+```{r}
+#| label: extract_marine_papers
+#|
+
+if (!file.exists(params$fn_marine_sentiment)) {
+    corpus_read(params$corpus_dir) |>
+        dplyr::filter(
+            id %in% oa_count$vision_technology_marine_ids
+        ) |>
+        dplyr::select(id, doi, author_abbr, display_name, ab) |>
+        dplyr::rename(abstract = ab, title = display_name) |>
+        dplyr::collect() |>
+        dplyr::slice_sample(n = 250) |>
+        dplyr::mutate(
+            abstract = substr(abstract, start = 1, stop = 5000)
+        ) |>
+        dplyr::left_join(
+            y = readRDS(params$fn_sentiment_results) |>
+                dplyr::select(
+                    id,
+                    neg,
+                    neu,
+                    pos,
+                    compound
+                ),
+            by = "id"
+        ) |>
+    writexl::write_xlsx(path = params$fn_marine_sentiment)
+}
+```
+
+
 # Results
 
 The results are based on data downloaded or accessed at:
@@ -725,3 +1666,160 @@ IPBES.R::table_dt((oa_count$vision_technology_subfields |> dplyr::arrange(desc(c
 
 A pdf of the graph can be downloaded [here](figures/ch2_technology/publications_over_time.pdf){target=_blank}.
 
+
+
+## Sentiment Analysis
+
+Two `.parquet` files containing the `id`, `publication_year` and `ab` (abstract) were extracted and are available upon request due to their size.
+
+For analyzing the sentiments of the provided abstracts, we have used the Python NLTK package, and VADER (Valence Aware Dictionary for Sentiment Reasoning) which is an NLTK module that provides sentiment scores based on the words used. VADER is a pre-trained, rule-based sentiment analysis model in which the terms are generally labeled as per their semantic orientation as either positive or negative.
+
+The main advantage/reason for using this model was that it doesn't require a labbed training dataset.
+The output of the model is 4 statistical scores: 
+
+- **compound**: composite score that summarizes the overall sentiment of the text, where scores close to 1 indicate a positive sentiment, scores close to -1 indicate a negative sentiment, and scores close to 0 indicate a neutral sentiment
+- **negative**: percentage of negative sentiments in the text 
+- **neutral**: percentage of neutral sentiments in the text
+- **positive**: percentage of positive sentiments in the text
+
+```{r}
+#| label: sentiment_analysis_table
+#|
+
+readRDS(params$fn_sentiment_results) |>
+    IPBES.R::table_dt(fn = "sentiment_scores", fixedColumns = list(leftColumns = 2))
+```
+
+Here is the per country table
+
+```{r}
+#| label: sentiments_countries_table
+#|
+
+readRDS(params$fn_sentiment_spatial_data) |>
+    IPBES.R::table_dt(fn = "sentiments_comp_over_time")
+rm(data)
+```
+
+### Sentiments Over Time
+
+This graphs shows the sentiment scores of the sentiment analysis over time.
+
+
+![](`r file.path("figures", "ch2_technology", "sentiments_over_time.png")`)
+
+To download high resolution, [click here](`r file.path("figures", "ch2_technology", "sentiments_over_time.pdf")`){target="_blank"}
+
+
+For clarity, here only the positive and egative sentiments.
+
+![](`r file.path("figures", "ch2_technology", "sentiments_over_time_neg_pos.png")`)
+
+To download high resolution, [click here](`r file.path("figures", "ch2_technology", "sentiments_over_time_neg_pos.pdf")`){target="_blank"}
+
+
+### Negative Sentiment
+
+#### Over Time
+
+This graphs shows the **negative score** of the sentiment analysis over time. It only 
+
+
+![](`r file.path("figures", "ch2_technology", "sentiments_neg_over_time.png")`)
+
+To download high resolution, [click here](`r file.path("figures", "ch2_technology", "sentiments_neg_over_time.pdf")`){target="_blank"}
+
+
+#### Per country
+
+![](`r file.path("maps", "ch2_technology", "sentiment_neg_per_countries_all.png")`)
+
+To download high resolution, [click here](`r file.path("maps", "ch2_technology", "sentiment_neg_per_countries_all.pdf")`){target="_blank"}
+
+![](`r file.path("maps", "ch2_technology", "sentiment_neg_per_countries_10.png")`)
+
+To download high resolution, [click here](`r file.path("maps", "ch2_technology", "sentiment_neg_per_countries_10.pdf")`){target="_blank"}
+
+
+### Neutral Sentiment
+
+#### Over Time
+
+This graphs shows the **compound score** of the sentiment analysis over time. It only 
+
+
+
+![](`r file.path("figures", "ch2_technology", "sentiments_neu_over_time.png")`)
+
+To download high resolution, [click here](`r file.path("figures", "ch2_technology", "sentiments_neu_over_time.pdf")`){target="_blank"}
+
+
+#### Per country
+
+
+![](`r file.path("maps", "ch2_technology", "sentiment_neu_per_countries_all.png")`)
+
+To download high resolution, [click here](`r file.path("maps", "ch2_technology", "sentiment_neu_per_countries_all.pdf")`){target="_blank"}
+
+![](`r file.path("maps", "ch2_technology", "sentiment_neu_per_countries_10.png")`)
+
+To download high resolution, [click here](`r file.path("maps", "ch2_technology", "sentiment_neu_per_countries_10.pdf")`){target="_blank"}
+
+
+
+
+### Positive Sentiment
+
+#### Over Time
+
+This graphs shows the **compound score** of the sentiment analysis over time. It only 
+
+![](`r file.path("figures", "ch2_technology", "sentiments_pos_over_time.png")`)
+
+To download high resolution, [click here](`r file.path("figures", "ch2_technology", "sentiments_pos_over_time.pdf")`){target="_blank"}
+
+#### Per country
+
+![](`r file.path("maps", "ch2_technology", "sentiment_pos_per_countries_all.png")`)
+
+To download high resolution, [click here](`r file.path("maps", "ch2_technology", "sentiment_pos_per_countries_all.pdf")`){target="_blank"}
+
+![](`r file.path("maps", "ch2_technology", "sentiment_pos_per_countries_10.png")`)
+
+To download high resolution, [click here](`r file.path("maps", "ch2_technology", "sentiment_neu_per_countries_10.pdf")`){target="_blank"}
+
+
+
+
+### Compound Sentiment
+
+#### Over Time
+
+This graphs shows the **compound score** of the sentiment analysis over time. It only 
+
+![](`r file.path("figures", "ch2_technology", "sentiments_comp_over_time.png")`)
+
+To download high resolution, [click here](`r file.path("figures", "ch2_technology", "sentiments_comp_over_time.pdf")`){target="_blank"}
+
+#### Per country
+
+
+![](`r file.path("maps", "ch2_technology", "sentiment_comp_per_countries_all.png")`)
+
+To download high resolution, [click here](`r file.path("maps", "ch2_technology", "sentiment_comp_per_countries_all.pdf")`){target="_blank"}
+
+![](`r file.path("maps", "ch2_technology", "sentiment_comp_per_countries_10.png")`)
+
+To download high resolution, [click here](`r file.path("maps", "ch2_technology", "sentiment_comp_per_countries_10.pdf")`){target="_blank"}
+
+### Marine Vision and Technology Sentiments
+
+This graphs shows the **positive and negative score** of the sentiment analysis over time.
+
+![](`r file.path("figures", "ch2_technology", "sentiments_marine_mean_over_time_neg_pos.png")`)
+
+To download high resolution, [click here](`r file.path("figures", "ch2_technology", "sentiments_marine_mean_over_time_neg_pos.pdf")`){target="_blank"}
+
+![](`r file.path("figures", "ch2_technology", "sentiments_marine_mean_over_time_neg_poss_ridge.png")`)
+
+To download high resolution, [click here](`r file.path("figures", "ch2_technology", "sentiments_marine_mean_over_time_neg_pos_ridge.pdf")`){target="_blank"}
