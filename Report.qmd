@@ -1856,7 +1856,10 @@ To download high resolution, [click here](`r file.path("figures", "ch2_technolog
 #### Download of Corpus
 An Excel file conataining the works from the Narine subset of the Technology Corpus (`technology` AND `vision` AND `nature` AND `transformativechange` AND `marine`) with the fields `id`, `doi`, `author_abbr` and `abstract` as well as the sentiment scores of the papers. 
 
-The Excel file with a random subset of 250 papers can be downloaded from  [here](`r params$fn_marine_sentiment`){target=_blank}. 
+There are technical issues with this at the moment.
 
-The Excel file with all papers can be downloaded from  [here](`r params$fn_marine_sentiment_all`){target=_blank}. 
+
+<!-- The Excel file with a random subset of 250 papers can be downloaded from  [here](`r params$fn_marine_sentiment`){target=_blank}. 
+
+The Excel file with all papers can be downloaded from  [here](`r params$fn_marine_sentiment_all`){target=_blank}.  -->
 
