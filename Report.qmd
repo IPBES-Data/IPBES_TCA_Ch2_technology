@@ -71,6 +71,7 @@ params:
     fn_sentiment_temporal_data: !expr file.path("data", "ch2_technology", "sentiment_temporal_data.rds")
     fn_sentiment_marine_temporal_data: !expr file.path("data", "ch2_technology", "sentiment_marine_temporal_data.rds")
     fn_marine_sentiment:  !expr file.path("data", "ch2_technology", "sentiment_marine_export.xlsx")
+    fn_marine_sentiment_all:  !expr file.path("data", "ch2_technology", "sentiment_marine_all_export.xlsx")
     #
     fig_publications_over_time: !expr file.path("figures", "ch2_technology", "publications_over_time")
     #
@@ -1490,7 +1491,7 @@ if (length(list.files(path = file.path("figures", "ch2_technology"), pattern = "
 #| label: sentiments_marine_over_time_neg_pos_ridgeplot_figure
 #|
 
-if (length(list.files(path = file.path("figures", "ch2_technology"), pattern = "sentiments_over_time_neg_pos_ridge")) < 2) {
+if (length(list.files(path = file.path("figures", "ch2_technology"), pattern = "sentiments_marine_over_time_neg_pos_ridge")) < 2) {
     figure <- readRDS(params$fn_sentiment_results) |>
         select(
             work_id = id,
@@ -1589,6 +1590,32 @@ if (length(list.files(path = file.path("figures", "ch2_technology"), pattern = "
 #| label: extract_marine_papers
 #|
 
+if (!file.exists(params$fn_marine_sentiment_all)) {
+    corpus_read(params$corpus_dir) |>
+        dplyr::filter(
+            id %in% oa_count$vision_technology_marine_ids
+        ) |>
+        dplyr::select(id, doi, author_abbr, display_name, ab) |>
+        dplyr::rename(abstract = ab, title = display_name) |>
+        dplyr::collect() |>
+        dplyr::slice_sample(n = 250) |>
+        dplyr::mutate(
+            abstract = substr(abstract, start = 1, stop = 5000)
+        ) |>
+        dplyr::left_join(
+            y = readRDS(params$fn_sentiment_results) |>
+                dplyr::select(
+                    id,
+                    neg,
+                    neu,
+                    pos,
+                    compound
+                ),
+            by = "id"
+        ) |>
+        writexl::write_xlsx(path = params$fn_marine_sentiment_all)
+}
+
 if (!file.exists(params$fn_marine_sentiment)) {
     corpus_read(params$corpus_dir) |>
         dplyr::filter(
@@ -1612,8 +1639,9 @@ if (!file.exists(params$fn_marine_sentiment)) {
                 ),
             by = "id"
         ) |>
-    writexl::write_xlsx(path = params$fn_marine_sentiment)
+        writexl::write_xlsx(path = params$fn_marine_sentiment)
 }
+
 ```
 
 
@@ -1816,10 +1844,10 @@ To download high resolution, [click here](`r file.path("maps", "ch2_technology",
 
 This graphs shows the **positive and negative score** of the sentiment analysis over time.
 
-![](`r file.path("figures", "ch2_technology", "sentiments_marine_mean_over_time_neg_pos.png")`)
+![](`r file.path("figures", "ch2_technology", "sentiments_marine_over_time_neg_pos.png")`)
 
-To download high resolution, [click here](`r file.path("figures", "ch2_technology", "sentiments_marine_mean_over_time_neg_pos.pdf")`){target="_blank"}
+To download high resolution, [click here](`r file.path("figures", "ch2_technology", "sentiments_marine_over_time_neg_pos.pdf")`){target="_blank"}
 
-![](`r file.path("figures", "ch2_technology", "sentiments_marine_mean_over_time_neg_poss_ridge.png")`)
+![](`r file.path("figures", "ch2_technology", "sentiments_mean_over_time_neg_poss_ridge.png")`)
 
-To download high resolution, [click here](`r file.path("figures", "ch2_technology", "sentiments_marine_mean_over_time_neg_pos_ridge.pdf")`){target="_blank"}
+To download high resolution, [click here](`r file.path("figures", "ch2_technology", "sentiments_marine_over_time_neg_pos_ridge.pdf")`){target="_blank"}
