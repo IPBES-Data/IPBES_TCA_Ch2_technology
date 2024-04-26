@@ -1693,6 +1693,10 @@ IPBES.R::table_dt((oa_count$vision_technology_subfields |> dplyr::arrange(desc(c
 
 A pdf of the graph can be downloaded [here](figures/ch2_technology/publications_over_time.pdf){target=_blank}.
 
+## `vision AND technology AND marine` in Technology Corpus Corpus
+
+For the Marine subset of the Technologyn Corpus, we do have 
+WILL BE ADDED.
 
 
 ## Sentiment Analysis
@@ -1859,7 +1863,7 @@ An Excel file conataining the works from the Narine subset of the Technology Cor
 There are technical issues with this at the moment.
 
 
-<!-- The Excel file with a random subset of 250 papers can be downloaded from  [here](`r params$fn_marine_sentiment`){target=_blank}. 
+The Excel file with a random subset of 250 papers can be downloaded from  [here](`r params$fn_marine_sentiment`){target=_blank}. 
 
-The Excel file with all papers can be downloaded from  [here](`r params$fn_marine_sentiment_all`){target=_blank}.  -->
+The Excel file with all papers can be downloaded from  [here](`r params$fn_marine_sentiment_all`){target=_blank}.
 
