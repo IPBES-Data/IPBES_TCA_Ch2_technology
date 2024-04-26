@@ -1598,7 +1598,6 @@ if (!file.exists(params$fn_marine_sentiment_all)) {
         dplyr::select(id, doi, author_abbr, display_name, ab) |>
         dplyr::rename(abstract = ab, title = display_name) |>
         dplyr::collect() |>
-        dplyr::slice_sample(n = 250) |>
         dplyr::mutate(
             abstract = substr(abstract, start = 1, stop = 5000)
         ) |>
@@ -1842,12 +1841,22 @@ To download high resolution, [click here](`r file.path("maps", "ch2_technology",
 
 ### Marine Vision and Technology Sentiments
 
+#### Figures
+
 This graphs shows the **positive and negative score** of the sentiment analysis over time.
 
 ![](`r file.path("figures", "ch2_technology", "sentiments_marine_over_time_neg_pos.png")`)
 
 To download high resolution, [click here](`r file.path("figures", "ch2_technology", "sentiments_marine_over_time_neg_pos.pdf")`){target="_blank"}
 
-![](`r file.path("figures", "ch2_technology", "sentiments_mean_over_time_neg_poss_ridge.png")`)
+![](`r file.path("figures", "ch2_technology", "sentiments_marine_over_time_neg_pos_ridge.png")`)
 
 To download high resolution, [click here](`r file.path("figures", "ch2_technology", "sentiments_marine_over_time_neg_pos_ridge.pdf")`){target="_blank"}
+
+#### Download of Corpus
+An Excel file conataining the works from the Narine subset of the Technology Corpus (`technology` AND `vision` AND `nature` AND `transformativechange` AND `marine`) with the fields `id`, `doi`, `author_abbr` and `abstract` as well as the sentiment scores of the papers. 
+
+The Excel file with a random subset of 250 papers can be downloaded from  [here](`r params$fn_marine_sentiment`){target=_blank}. 
+
+The Excel file with all papers can be downloaded from  [here](`r params$fn_marine_sentiment_all`){target=_blank}. 
+
