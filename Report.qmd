@@ -60,6 +60,7 @@ params:
     corpus_topics_dir: !expr file.path("data", "ch2_technology", "corpus_topics")
     #
     corpus_tca_dir: !expr file.path("..", "IPBES_TCA_Corpus", "data", "tca_corpus", "corpus")
+    corpus_cases_dir: !expr file.path("..", "IPBES_TCA_Corpus", "data", "tca_corpus", "corpus_cases")
     #
     fn_count: !expr file.path("data", "ch2_technology", "oa_count.rds")
     fn_ids_tech_in_tca: !expr file.path("data", "ch2_technology", "ids_tech_in_tca.rds")
@@ -74,6 +75,7 @@ params:
     fn_marine_sentiment_all:  !expr file.path("data", "ch2_technology", "sentiment_marine_all_export.xlsx")
     #
     fig_publications_over_time: !expr file.path("figures", "ch2_technology", "publications_over_time")
+    fig_publications_over_time_yearly: !expr file.path("figures", "ch2_technology", "publications_over_time_yearly")
     #
     temporal_from: 1900
     min_count_sentiment_timeseries: 10
@@ -439,12 +441,11 @@ if (get_count) {
         title_and_abstract.search = compact(paste0("(", params$st_vision, ") AND (", params$st_technology, ") AND (", params$st_marine, ")")),
         verbose = TRUE,
         output = "list",
+        options = list(
+            select = "id"
+        )
     ) |>
-        sapply(
-            FUN = function(x) {
-                x$id
-            }
-        ) |>
+        unlist() |>
         unique()
 }
 ```
@@ -666,7 +667,9 @@ NOW IF EVERYTHING IS OK, DELETE THE OLD CORPUS AND RENAME THE NEW ONE
 ```
 
 
- ## Export data for sentiment analysis
+
+
+## Export data for sentiment analysis
 
 
 ```{r}
@@ -754,6 +757,47 @@ if (!dir.exists(params$corpus_authors_dir)) {
 ## | |
 
 if (!file.exists(params$fn_publications_over_time)) {
+    cases_ids <- corpus_read(params$corpus_cases_dir) |>
+        dplyr::select(id, publication_year) |>
+        collect() |>
+        unlist()
+
+    tech_cases <- corpus_read(params$corpus_dir) |>
+        dplyr::select(publication_year, id) |>
+        dplyr::filter(id %in% cases_ids) |>
+        dplyr::group_by(publication_year) |>
+        dplyr::select(publication_year) |>
+        collect() |>
+        table() |>
+        as.data.frame() |>
+        dplyr::mutate(
+            publication_year = as.integer(as.character(publication_year)),
+            p = Freq / sum(Freq),
+            p_cum = cumsum(p)
+        ) |>
+        dplyr::rename(
+            count_technology_vision_cases = Freq,
+            p_count_technology_vision_cases = p,
+            p_cum_count_technology_vision_cases = p_cum
+        )
+
+
+    tech_tca <- corpus_read(params$corpus_dir) |>
+        dplyr::select(publication_year) |>
+        dplyr::arrange(publication_year) |>
+        dplyr::collect() |>
+        table() |>
+        as.data.frame() |>
+        dplyr::mutate(
+            publication_year = as.integer(as.character(publication_year)),
+            p_tech_tca = Freq / sum(Freq),
+            p_cum_tech_tca = cumsum(p_tech_tca)
+        ) |>
+        dplyr::rename(
+            count_tech_tca = Freq
+        )
+
+
     read_corpus(params$corpus_tca_dir) |>
         dplyr::select(publication_year) |>
         dplyr::arrange(publication_year) |>
@@ -797,7 +841,19 @@ if (!file.exists(params$fn_publications_over_time)) {
             p_oa = p,
             p_cum_oa = p_cum
         ) |>
-    saveRDS(file = params$fn_publications_over_time)
+        # technology in tca
+        dplyr::left_join(
+            y = tech_tca,
+            by = "publication_year",
+            suffix = c("", "_technology_vision_tca")
+        ) |>
+        # technology in cases
+        dplyr::left_join(
+            y = tech_cases,
+            by = "publication_year",
+            suffix = c("", "_technology_vision_tca_cases")
+        ) |>
+        saveRDS(file = params$fn_publications_over_time)
 }
 ```
 
@@ -810,12 +866,13 @@ if (length(list.files(path = dirname(params$fig_publications_over_time), pattern
         dplyr::filter(publication_year >= params$temporal_from) |>
         ggplot2::ggplot() +
         #
-        ggplot2::geom_bar(ggplot2::aes(x = publication_year, y = count_tca, fill = "Nmber of publications per year in TCA Corpus"), stat = "identity") +
-        ggplot2::geom_line(ggplot2::aes(x = publication_year, y = p_cum_oa / sec_axi_fact, color = "Cumulative proportion OA Corpus"), size = 1.5) +
-        ggplot2::geom_line(ggplot2::aes(x = publication_year, y = p_cum_tca / sec_axi_fact, color = "Cumulative proportion TCA Corpus"), size = 1.5) +
-        ggplot2::geom_line(ggplot2::aes(x = publication_year, y = p_cum_vision / sec_axi_fact, color = "Cumulative proportion vision only corpus"), size = 1.5) +
-        ggplot2::geom_line(ggplot2::aes(x = publication_year, y = p_cum_technology / sec_axi_fact, color = "Cumulative proportion technology only corpus"), size = 1.5) +
-        ggplot2::geom_line(ggplot2::aes(x = publication_year, y = p_cum_technology_vision / sec_axi_fact, color = "Cumulative proportion Technology Corpus"), size = 1.5) +
+        ggplot2::geom_bar(ggplot2::aes(x = publication_year, y = count_tca, fill = "Number of publications per year in TCA Corpus"), stat = "identity") +
+        ggplot2::geom_line(ggplot2::aes(x = publication_year, y = p_cum_oa / sec_axi_fact, color = "Cumulative proportion OA Corpus"), linewidth = 1.5, linetype = "dotted") +
+        ggplot2::geom_line(ggplot2::aes(x = publication_year, y = p_cum_tca / sec_axi_fact, color = "Cumulative proportion TCA Corpus"), linewidth = 1.5, linetype = "dotted") +
+        ggplot2::geom_line(ggplot2::aes(x = publication_year, y = p_cum_vision / sec_axi_fact, color = "Cumulative proportion vision only corpus"), linewidth = 1.5, linetype = "dotted") +
+        ggplot2::geom_line(ggplot2::aes(x = publication_year, y = p_cum_technology / sec_axi_fact, color = "Cumulative proportion technology only corpus"), linewidth = 1.5, linetype = "dotted") +
+        ggplot2::geom_line(ggplot2::aes(x = publication_year, y = p_cum_technology_vision / sec_axi_fact, color = "Cumulative proportion Technology Corpus"), linewidth = 1.5, linetype = "solid") +
+        ggplot2::geom_line(ggplot2::aes(x = publication_year, y = p_cum_count_technology_vision_cases / sec_axi_fact, color = "Cumulative proportion Technology Corpus min Cases Corpus"), linewidth = 1.5, linetype = "solid") +
         #
         ggplot2::scale_color_manual(
             values = c(
@@ -823,11 +880,12 @@ if (length(list.files(path = dirname(params$fig_publications_over_time), pattern
                 "Cumulative proportion TCA Corpus" = "black",
                 "Cumulative proportion vision only corpus" = "#2ca02c",
                 "Cumulative proportion technology only corpus" = "#d62728",
-                "Cumulative proportion Technology Corpus" = "#9467bd"
+                "Cumulative proportion Technology Corpus" = "#9467bd",
+                "Cumulative proportion Technology Corpus min Cases Corpus" = "#8c564b"
             )
         ) +
         ggplot2::scale_fill_manual(
-            values = c("Nmber of publications per year in TCA Corpus" = "lightgrey")
+            values = c("Number of publications per year in TCA Corpus" = "lightgrey")
         ) +
         #
         ggplot2::scale_x_continuous(breaks = seq(params$temporal_from, 2030, 10)) +
@@ -847,6 +905,7 @@ if (length(list.files(path = dirname(params$fig_publications_over_time), pattern
             legend.justification = c(0.1, 0.9), # Justify the legend to the top left position
             legend.background = ggplot2::element_rect(fill = "white", color = "black") # Add a white background to the legend
         )
+    figure
 
     ggplot2::ggsave(
         paste0(params$fig_publications_over_time, ".pdf"),
@@ -865,6 +924,119 @@ if (length(list.files(path = dirname(params$fig_publications_over_time), pattern
 }
 ```
 
+
+```{r}
+#| label: publications_over_time_yearly_figure
+##| # | |
+if (length(list.files(path = dirname(params$fig_publications_over_time), pattern = basename(params$fig_publications_over_time_yearly))) < 2) {
+    data <- readRDS(params$fn_publications_over_time)
+    max_count_technology_vision <- max(data$count_technology_vision, na.rm = TRUE)
+    sec_axi_fact <- 1e3
+    figure <- data |>
+        dplyr::filter(publication_year >= params$temporal_from) |>
+        ggplot2::ggplot() +
+        #
+        ggplot2::geom_line(
+            ggplot2::aes(
+                x = publication_year,
+                y = (count_tca / count_oa),
+                color = "4. Proportion TCA Corpus of OA Corpus of OA Corpus",
+                linetype = "Left Y Axis"
+            ),
+            linewidth = 1.5
+        ) +
+        ggplot2::geom_line(
+            ggplot2::aes(
+                x = publication_year,
+                y = (count_vision / count_oa),
+                color = "1. Proportion vision only corpus of OA Corpus",
+                linetype = "Left Y Axis"
+            ),
+            linewidth = 1.5
+        ) +
+        ggplot2::geom_line(
+            ggplot2::aes(
+                x = publication_year,
+                y = (count_technology / count_oa),
+                color = "2. Proportion technology only corpus of OA Corpus",
+                linetype = "Left Y Axis"
+            ),
+            linewidth = 1.5
+        ) +
+        ggplot2::geom_line(
+            ggplot2::aes(
+                x = publication_year,
+                y = (count_technology_vision / count_oa),
+                color = "3. Proportion Technology Corpus of OA Corpus",
+                linetype = "Left Y Axis"
+            ),
+            linewidth = 1.5
+        ) +
+        ggplot2::geom_line(
+            ggplot2::aes(
+                x = publication_year,
+                y = (count_technology_vision_cases / count_oa) * sec_axi_fact,
+                color = "5. Proportion Technology Corpus in Cases Corpus of OA Corpus",
+                linetype = "Right Y Axis"
+            ),
+            linewidth = 1.5
+        ) +
+        # #
+        ggplot2::scale_color_manual(
+            values = c(
+                "1. Proportion vision only corpus of OA Corpus" = "#8c564b",
+                "2. Proportion technology only corpus of OA Corpus" = "#2ca02c",
+                "3. Proportion Technology Corpus of OA Corpus" = "#d62728",
+                "4. Proportion TCA Corpus of OA Corpus of OA Corpus" = "#9467bd",
+                "5. Proportion Technology Corpus in Cases Corpus of OA Corpus" = "black"
+            ),
+            labels = waiver()
+        ) +
+        #
+        ggplot2::scale_linetype_manual(
+            values = c(
+                "Left Y Axis" = "dotted",
+                "Right Y Axis" = "solid"
+            ),
+            labels = waiver()
+        ) +
+        #
+        ggplot2::scale_x_continuous(breaks = seq(params$temporal_from, 2030, 10)) +
+        ggplot2::scale_y_continuous(
+            "Proportion of publications",
+            sec.axis = ggplot2::sec_axis(~ . / sec_axi_fact, name = "Proportion of publications") # divide by 100 to scale back the secondary axis
+        ) +
+        ggplot2::labs(
+            title = "Publications over time",
+            x = "Year",
+            y = "Number of publications"
+        ) +
+        ggplot2::theme_minimal() +
+        ggplot2::theme(
+            axis.text.y.right = ggplot2::element_text(color = "red"),
+            legend.position = "inside", # Move the legend to the top left position
+            legend.justification = c(0.1, 0.9), # Justify the legend to the top left position
+            legend.background = ggplot2::element_rect(fill = "white", color = "black") # Add a white background to the legend
+        ) +
+        ggplot2::labs(color = "Proportion of OA Corpus")
+    figure
+
+    ggplot2::ggsave(
+        paste0(params$fig_publications_over_time, ".pdf"),
+        width = 12,
+        height = 12,
+        figure
+    )
+    ggplot2::ggsave(
+        paste0(params$fig_publications_over_time, ".png"),
+        width = 12,
+        height = 12,
+        figure
+    )
+
+    rm(figure, sec_axi_fact)
+}
+```
 
 ## Sentiment Analysis
 
@@ -1503,7 +1675,11 @@ if (length(list.files(path = file.path("figures", "ch2_technology"), pattern = "
         ) |>
         dplyr::ungroup() |>
         dplyr::filter(
-            year >= 1980
+            work_id %in% oa_count$vision_technology_marine_ids
+        ) |>
+        dplyr::filter(
+            year >= 1980,
+            year < 2025
         ) |>
         mutate(
             year = as.factor(year)
@@ -1517,11 +1693,25 @@ if (length(list.files(path = file.path("figures", "ch2_technology"), pattern = "
         group_by(year) %>%
         summarise(
             n = n()
+        ) |>
+        mutate(
+            n = paste0("N = ", n)
         )
+
 
     # Add the number of points per year as text
     figure <- figure +
-        geom_text(data = counts, aes(x = Inf, y = year, label = n), hjust = "inward", vjust = 0.5)
+        geom_label(
+            data = counts,
+            aes(
+                x = -Inf,
+                y = year,
+                label = sprintf("%-10s", n)
+            ),
+            size = rel(3.3),
+            hjust = "inward",
+            vjust = 0
+        )
 
 
 
@@ -1542,6 +1732,73 @@ if (length(list.files(path = file.path("figures", "ch2_technology"), pattern = "
 }
 ```
 
+```{r}
+#| label: sentiments_over_time_neg_pos_ridgeplot_figure
+#|
+
+if (length(list.files(path = file.path("figures", "ch2_technology"), pattern = "sentiments_over_time_neg_pos_ridge")) < 2) {
+    figure <- readRDS(params$fn_sentiment_results) |>
+        select(
+            work_id = id,
+            year = date,
+            neg,
+            neu,
+            pos,
+            compound
+        ) |>
+        dplyr::ungroup() |>
+        dplyr::filter(
+            year >= 1980,
+            year < 2025
+        ) |>
+        mutate(
+            year = as.factor(year)
+        ) |>
+        ggplot() +
+        geom_density_ridges(aes(x = pos, y = year, fill = "positive"), rel_min_height = 0.005) +
+        geom_density_ridges(aes(x = -neg, y = year, fill = "negative"), rel_min_height = 0.005)
+
+    # Calculate the number of points per year
+    counts <- figure$data %>%
+        group_by(year) %>%
+        summarise(
+            n = n()
+        ) |>
+        mutate(
+            n = paste0("N = ", n)
+        )
+
+    # Add the number of points per year as text
+    figure <- figure +
+        geom_text(
+            data = counts, 
+            aes(
+                x = -Inf,
+                y = year, 
+                label = sprintf("%-10s", n)
+            ), 
+            size = rel(3.3),
+            hjust = "inward", 
+            vjust = 0
+    )
+
+
+
+    ggplot2::ggsave(
+        file.path("figures", "ch2_technology", "sentiments_over_time_neg_pos_ridge.pdf"),
+        width = 12,
+        height = 6,
+        figure
+    )
+    ggplot2::ggsave(
+        file.path("figures", "ch2_technology", "sentiments_over_time_neg_pos_ridge.png"),
+        width = 12,
+        height = 6,
+        figure
+    )
+
+    rm(figure)
+}
 
 ```{r}
 #| label: sentiments_marine_over_time_neg_pos_figure
@@ -1686,6 +1943,40 @@ The easies would be to download the Excel file through the button and to mark th
 ```{r}
 IPBES.R::table_dt((oa_count$vision_technology_subfields |> dplyr::arrange(desc(count))), fixedColumns = NULL, fn = "Vision Technology Subfields")
 ```
+
+## Works in Technology Corpus also in Cases Corpus
+
+```{r}
+#| label: technology_in_cases
+#|
+
+cases_id <- corpus_read(params$corpus_cases_dir) |>
+    dplyr::select(id) |>
+    dplyr::distinct(id) |>
+    collect() |>
+    unlist() |>
+    as.vector()
+
+tech_id <- corpus_read(params$corpus_dir) |>
+    dplyr::select(id) |>
+    dplyr::distinct(id) |>
+    collect() |>
+    unlist() |>
+    as.vector()
+
+count_cases <- sum(tech_id %in% cases_id)
+count <- length(tech_id)
+p_cases <- count_cases / count
+
+count_marine_cases <- sum(oa_count$vision_technology_marine_ids %in% cases_id)
+count_marine <- length(oa_count$vision_technology_marine_ids)
+p_marine_cases <- count_marine_cases / count_marine
+
+```
+
+Out of the **`r count`** works in the Technology Corpus, **`r count_cases`** are also in the Cases Corpus. This is **`r round(p_cases * 100, 2)`%** of the Technology Corpus.
+
+Out of the **`r count_marine`** marine works in the Technology Corpus, **`r count_marine_cases`** are also in the Cases Corpus. This is **`r round(p_marine_cases * 100, 2)`%** of the Technology Corpus.
 
 ## Publications over time
 
@@ -1867,3 +2158,9 @@ The Excel file with a random subset of 250 papers can be downloaded from  [here]
 
 The Excel file with all papers can be downloaded from  [here](`r params$fn_marine_sentiment_all`){target=_blank}.
 
+
+### Additional Ridge plot
+
+![](`r file.path("figures", "ch2_technology", "sentiments_over_time_neg_pos_ridge.png")`)
+
+To download high resolution, [click here](`r file.path("figures", "ch2_technology", "sentiments_over_time_neg_pos_ridge.pdf")`){target="_blank"}
