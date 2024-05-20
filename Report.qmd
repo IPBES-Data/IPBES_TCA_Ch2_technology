@@ -667,6 +667,71 @@ NOW IF EVERYTHING IS OK, DELETE THE OLD CORPUS AND RENAME THE NEW ONE
 ```
 
 
+## Sentiment Analysis
+
+The Sentiment Analysis has been implemented by [Maral Dadvar](mailto://dadvar.maral@gmail.com)
+
+The sentiment analysis was implemented using the abstracts using the [Python NLTK package](https://www.nltk.org/), and [VADER](https://www.nltk.org/_modules/nltk/sentiment/vader.html) which is an NLTK module that provides sentiment scores based on the words used.  Vader is a pre-trained, rule-based sentiment analysis model in which the terms are generally labeled as per their semantic orientation as either positive or negative. The main advantage/reason for using this model was that it doesn't require a labelled training dataset.
+
+It returns a positive, negative, neutral and compound score. The compound score is a composite score that summarizes the overall sentiment of the text, where scores close to 1 indicate a positive sentiment, scores close to -1 indicate a negative sentiment, and scores close to 0 indicate a neutral sentiment. The other three scores show the percentage of each of the sentiments in the text.
+
+The input is in parquet format, containing 124518 entries, including publications’ abstracts, OA ID, and publication year. 
+
+The output of the model is 4 scores: compound, negative, neutral, and positive.
+It is also in parquet format containing 124518 entries, including, OA ID, publication year, compound score, negative score, neutral score, and positive score.
+
+
+
+```{python}
+#| eval: false
+#| 
+
+import pandas as pd
+import pyarrow.parquet as pq
+from nltk.sentiment.vader import SentimentIntensityAnalyzer
+import csv
+from multiprocessing import Pool, cpu_count
+import numpy as np  
+
+# Function to perform sentiment analysis on a chunk of rows
+def analyze_sentiment(chunk):
+    sid = SentimentIntensityAnalyzer()
+    results = []
+    for _, row in chunk.iterrows():
+        if isinstance(row['ab'], str):  # Check if the 'ab' column contains a string
+            dic = sid.polarity_scores(row['ab'])
+            results.append([row['id'], row['publication_year'], dic['compound'], dic['neg'], dic['neu'], dic['pos']])
+    return results
+
+if __name__ == '__main__':
+    # Read Parquet file
+    table = pq.read_table('C:\\Users\\user\\Desktop\\IPBES\\SentimentAnalysis\\Sentimet_Analysis_Sebastian\\sent_analysis_technology.parquet')
+    df = table.to_pandas()
+
+    # Convert necessary columns to appropriate data types
+    df['ab'] = df['ab'].astype(str)  
+
+    # Determine the number of processes to use (up to the number of CPU cores)
+    num_processes = min(cpu_count(), len(df))
+
+    # Split DataFrame into chunks for parallel processing
+    chunks = np.array_split(df, num_processes)
+
+    with open('output_multi.csv', 'w', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerow(['id','date','compound','neg','neu','pos'])
+
+        # Create a pool of worker processes
+        with Pool(processes=num_processes) as pool:
+            results = pool.map(analyze_sentiment, chunks)
+            for result_chunk in results:
+                for result_row in result_chunk:
+                    writer.writerow(result_row)
+
+    print("Sentiment analysis completed and results written to output_02_multi.csv")
+
+```
+
 
 
 ## Export data for sentiment analysis
@@ -862,8 +927,13 @@ if (!file.exists(params$fn_publications_over_time)) {
 
 if (length(list.files(path = dirname(params$fig_publications_over_time), pattern = basename(params$fig_publications_over_time))) < 2) {
     sec_axi_fact <- 0.5e-5
+
+
     figure <- readRDS(params$fn_publications_over_time) |>
-        dplyr::filter(publication_year >= params$temporal_from) |>
+        dplyr::filter(
+            publication_year >= params$temporal_from,
+            publication_year <= 2024
+        ) |>
         ggplot2::ggplot() +
         #
         ggplot2::geom_bar(ggplot2::aes(x = publication_year, y = count_tca, fill = "Number of publications per year in TCA Corpus"), stat = "identity") +
@@ -933,7 +1003,10 @@ if (length(list.files(path = dirname(params$fig_publications_over_time), pattern
     max_count_technology_vision <- max(data$count_technology_vision, na.rm = TRUE)
     sec_axi_fact <- 1e3
     figure <- data |>
-        dplyr::filter(publication_year >= params$temporal_from) |>
+        dplyr::filter(
+            publication_year >= params$temporal_from,
+            publication_year <= 2024
+        ) |>
         ggplot2::ggplot() +
         #
         ggplot2::geom_line(
@@ -1022,13 +1095,13 @@ if (length(list.files(path = dirname(params$fig_publications_over_time), pattern
     figure
 
     ggplot2::ggsave(
-        paste0(params$fig_publications_over_time, ".pdf"),
+        paste0(params$fig_publications_over_time_yearly, ".pdf"),
         width = 12,
         height = 12,
         figure
     )
     ggplot2::ggsave(
-        paste0(params$fig_publications_over_time, ".png"),
+        paste0(params$fig_publications_over_time_yearly, ".png"),
         width = 12,
         height = 12,
         figure
@@ -1968,8 +2041,8 @@ count_cases <- sum(tech_id %in% cases_id)
 count <- length(tech_id)
 p_cases <- count_cases / count
 
-count_marine_cases <- sum(oa_count$vision_technology_marine_ids %in% cases_id)
 count_marine <- length(oa_count$vision_technology_marine_ids)
+count_marine_cases <- sum(oa_count$vision_technology_marine_ids %in% cases_id)
 p_marine_cases <- count_marine_cases / count_marine
 
 ```
@@ -1983,6 +2056,10 @@ Out of the **`r count_marine`** marine works in the Technology Corpus, **`r coun
 ![Publications over time of different corpora](figures/ch2_technology/publications_over_time.png)
 
 A pdf of the graph can be downloaded [here](figures/ch2_technology/publications_over_time.pdf){target=_blank}.
+
+![Publications over time of different corpora](figures/ch2_technology/publications_over_time_yearly.png)
+
+A pdf of the graph can be downloaded [here](figures/ch2_technology/publications_over_time_yearly.pdf){target=_blank}.
 
 ## `vision AND technology AND marine` in Technology Corpus Corpus
 
