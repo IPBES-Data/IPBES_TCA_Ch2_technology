@@ -1,3 +1,8 @@
+# This Repo has merged into the [IPBES TCA Corpus repository](https://github.com/IPBES-Data/IPBES_TCA_Corpus). 
+# The report is available [here](https://ipbes-data.github.io/IPBES_TCA_Corpus/IPBES_Ch2_technology.html )
+
+
+
 # Transformative Change Assessment - Ch 2 - technology
 
 [![DOI](https://zenodo.org/badge/DOI/99.9999/zenodo.9999999.svg)](https://doi.org/99.9999/zenodo.9999999)
